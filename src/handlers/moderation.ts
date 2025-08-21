@@ -4,6 +4,12 @@ import { logger } from "../utils/logger.js";
 import { TModerationAction } from "../interfaces/i-moderation.js";
 import { IUserWarning } from "../interfaces/i-user.js";
 import { IBotContext } from "../interfaces/i-bot.js";
+import {
+  warningMessage,
+  mutedUserMessage,
+  bannedUserMessage,
+  defaultReasons,
+} from "../config/messages.js";
 
 // Store warnings in memory (could be moved to database later)
 const warnings: Map<number, IUserWarning> = new Map();
@@ -138,25 +144,28 @@ const deleteMessage = async (
     await ctx.deleteMessage();
 
     // Track warning
-    await addWarning(from.id, ctx.chat?.id || 0, reason || "Content violation");
+    await addWarning(
+      from.id,
+      ctx.chat?.id || 0,
+      reason || defaultReasons.contentViolation
+    );
 
     // Send warning message
     const warningCount = warnings.get(from.id)?.count || 1;
-    const warningMessage = await ctx.reply(
-      `⚠️ <b>Warning ${warningCount}/${config.moderation.maxWarnings}</b>\n` +
-        `${from.first_name}, your message was deleted.\n` +
-        `Reason: ${reason || "Content violation"}\n` +
-        `Please follow the group rules.`,
-      { parse_mode: "HTML" }
+
+    const warningMsg = warningMessage(
+      from.first_name,
+      warningCount,
+      config.moderation.maxWarnings,
+      reason || defaultReasons.contentViolation
     );
+
+    const warningReply = await ctx.reply(warningMsg, { parse_mode: "HTML" });
 
     // Delete warning message after 10 seconds
     setTimeout(async () => {
       try {
-        await ctx.api.deleteMessage(
-          ctx.chat?.id || 0,
-          warningMessage.message_id
-        );
+        await ctx.api.deleteMessage(ctx.chat?.id || 0, warningReply.message_id);
       } catch (error) {
         logger.error("Failed to delete warning message", { error });
       }
@@ -211,12 +220,13 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     );
 
     // Send notification
-    await ctx.reply(
-      `🔇 <b>User Muted</b>\n` +
-        `${from.first_name} has been muted for ${config.moderation.muteDurationMinutes} minutes.\n` +
-        `Reason: ${reason || "Policy violation"}`,
-      { parse_mode: "HTML" }
+    const muteMsg = mutedUserMessage(
+      from.first_name,
+      config.moderation.muteDurationMinutes,
+      reason || defaultReasons.policyViolation
     );
+
+    await ctx.reply(muteMsg, { parse_mode: "HTML" });
 
     logger.info("User muted", {
       userId: from.id,
@@ -249,12 +259,12 @@ const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     await ctx.banChatMember(from.id);
 
     // Send notification
-    await ctx.reply(
-      `🚫 <b>User Banned</b>\n` +
-        `${from.first_name} has been permanently banned from this group.\n` +
-        `Reason: ${reason || "Severe policy violation"}`,
-      { parse_mode: "HTML" }
+    const banMsg = bannedUserMessage(
+      from.username || from.first_name,
+      reason || defaultReasons.severeViolation
     );
+
+    await ctx.reply(banMsg, { parse_mode: "HTML" });
 
     // Clear warnings
     warnings.delete(from.id);

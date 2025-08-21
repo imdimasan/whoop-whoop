@@ -106,7 +106,7 @@ const performCustomAnalysis = async (
         },
       ],
       temperature: 0.1,
-      max_tokens: 150,
+      max_tokens: 2000,
     });
 
     const response = completion.choices[0]?.message?.content;

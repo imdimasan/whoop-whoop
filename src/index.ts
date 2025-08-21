@@ -7,6 +7,16 @@ import {
   clearWarnings,
 } from "./handlers/moderation.js";
 import { IBotContext } from "./interfaces/i-bot.js";
+import {
+  welcomePrivateMessage,
+  welcomeGroupMessage,
+  helpMessage,
+  statsMessage,
+  settingsMessage,
+  userWarningsMessage,
+  warningsClearedMessage,
+  errorMessages,
+} from "./config/messages.js";
 
 /**
  * Initialize and start the bot
@@ -80,52 +90,18 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     }
 
     if (chat.type === "private") {
-      await ctx.reply(
-        `👋 <b>Welcome to ${config.telegram.botUsername}!</b>\n\n` +
-          `I'm an AI-powered moderation bot that helps keep Telegram groups safe and friendly.\n\n` +
-          `<b>Features:</b>\n` +
-          `• AI-powered content moderation\n` +
-          `• Automatic spam detection\n` +
-          `• Inappropriate content filtering\n` +
-          `• Warning system for violations\n` +
-          `• Temporary muting and banning\n\n` +
-          `<b>How to use:</b>\n` +
-          `1. Add me to your group\n` +
-          `2. Make me an administrator with delete and restrict permissions\n` +
-          `3. I'll automatically moderate messages\n\n` +
-          `Use /help for more information.`,
-        { parse_mode: "HTML" }
-      );
+      const welcomeMsg = welcomePrivateMessage(config.telegram.botUsername);
+      await ctx.reply(welcomeMsg, { parse_mode: "HTML" });
     } else {
-      await ctx.reply(
-        `✅ <b>${config.telegram.botUsername} is active!</b>\n` +
-          `I'll moderate messages in this group automatically.\n` +
-          `Make sure I have admin permissions to delete messages and restrict users.`,
-        { parse_mode: "HTML" }
-      );
+      const groupMsg = welcomeGroupMessage(config.telegram.botUsername);
+      await ctx.reply(groupMsg, { parse_mode: "HTML" });
     }
   });
 
   // Help command
   bot.command("help", async (ctx) => {
-    await ctx.reply(
-      `📚 <b>Bot Commands:</b>\n\n` +
-        `/start - Initialize the bot\n` +
-        `/help - Show this help message\n` +
-        `/stats - View moderation statistics\n` +
-        `/settings - Configure bot settings (admin only)\n` +
-        `/warnings @user - Check user warnings\n` +
-        `/clearwarnings @user - Clear user warnings (admin only)\n\n` +
-        `<b>Admin Requirements:</b>\n` +
-        `• Delete messages permission\n` +
-        `• Restrict members permission\n\n` +
-        `<b>Moderation Actions:</b>\n` +
-        `• <b>Warning:</b> After content violation\n` +
-        `• <b>Mute:</b> After ${config.moderation.maxWarnings} warnings or medium severity\n` +
-        `• <b>Ban:</b> For severe violations\n\n` +
-        `The bot uses OpenAI to analyze messages for spam, inappropriate content, and policy violations.`,
-      { parse_mode: "HTML" }
-    );
+    const helpMsg = helpMessage(config.moderation.maxWarnings);
+    await ctx.reply(helpMsg, { parse_mode: "HTML" });
   });
 
   // Stats command
@@ -137,7 +113,7 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     }
 
     if (chat.type === "private") {
-      await ctx.reply("📊 This command only works in groups.");
+      await ctx.reply(errorMessages.privateOnly);
       return;
     }
 
@@ -148,28 +124,17 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     const canRestrict =
       botMember.status === "administrator" && botMember.can_restrict_members;
 
-    const permissionStatus =
-      canDelete && canRestrict
-        ? "✅ Properly configured"
-        : "❌ Missing permissions";
     const missingPerms = [];
     if (!canDelete) missingPerms.push("Delete messages");
     if (!canRestrict) missingPerms.push("Restrict members");
 
-    await ctx.reply(
-      `📊 <b>Moderation Statistics</b>\n\n` +
-        `Group: ${chat.title || "Unknown"}\n` +
-        `Bot Status: ${permissionStatus}\n` +
-        `OpenAI: ✅ Connected\n\n` +
-        `<b>Permissions:</b>\n` +
-        `Delete messages: ${canDelete ? "✅" : "❌"}\n` +
-        `Restrict members: ${canRestrict ? "✅" : "❌"}\n` +
-        (missingPerms.length > 0
-          ? `\n⚠️ Missing: ${missingPerms.join(", ")}`
-          : "") +
-        `\n\n<i>Detailed statistics coming soon...</i>`,
-      { parse_mode: "HTML" }
+    const statsMsg = statsMessage(
+      chat.title || "Unknown",
+      canDelete,
+      canRestrict,
+      missingPerms
     );
+    await ctx.reply(statsMsg, { parse_mode: "HTML" });
   });
 
   // Settings command (admin only)
@@ -181,7 +146,7 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     }
 
     if (chat.type === "private") {
-      await ctx.reply("⚙️ This command only works in groups.");
+      await ctx.reply(errorMessages.groupOnly);
       return;
     }
 
@@ -191,28 +156,18 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       member.status === "administrator" || member.status === "creator";
 
     if (!isAdmin) {
-      await ctx.reply("❌ Only administrators can use this command.");
+      await ctx.reply(errorMessages.adminOnly);
       return;
     }
 
-    await ctx.reply(
-      `⚙️ <b>Bot Settings</b>\n\n` +
-        `<b>Warning System:</b>\n` +
-        `Max Warnings: ${config.moderation.maxWarnings}\n` +
-        `Mute Duration: ${config.moderation.muteDurationMinutes} minutes\n\n` +
-        `<b>Action Thresholds:</b>\n` +
-        `Ban: ${(config.moderation.thresholds.ban * 100).toFixed(
-          0
-        )}% confidence\n` +
-        `Mute: ${(config.moderation.thresholds.mute * 100).toFixed(
-          0
-        )}% confidence\n` +
-        `Delete/Warn: ${(config.moderation.thresholds.delete * 100).toFixed(
-          0
-        )}% confidence\n\n` +
-        `<i>Lower thresholds = more warnings, higher = stricter</i>`,
-      { parse_mode: "HTML" }
+    const settingsMsg = settingsMessage(
+      config.moderation.maxWarnings,
+      config.moderation.muteDurationMinutes,
+      Math.round(config.moderation.thresholds.ban * 100),
+      Math.round(config.moderation.thresholds.mute * 100),
+      Math.round(config.moderation.thresholds.delete * 100)
     );
+    await ctx.reply(settingsMsg, { parse_mode: "HTML" });
   });
 
   // Warnings command
@@ -224,7 +179,7 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     }
 
     if (chat.type === "private") {
-      await ctx.reply("This command only works in groups.");
+      await ctx.reply(errorMessages.groupOnly);
       return;
     }
 
@@ -232,20 +187,17 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     const targetUser = message.reply_to_message?.from;
 
     if (!targetUser) {
-      await ctx.reply(
-        "Please reply to a user's message to check their warnings."
-      );
+      await ctx.reply(errorMessages.replyRequired);
       return;
     }
 
     const warningCount = getWarningCount(targetUser.id);
-
-    await ctx.reply(
-      `⚠️ <b>User Warnings</b>\n\n` +
-        `User: ${targetUser.first_name}\n` +
-        `Warnings: ${warningCount}/${config.moderation.maxWarnings}`,
-      { parse_mode: "HTML" }
+    const warningsMsg = userWarningsMessage(
+      targetUser.first_name,
+      warningCount,
+      config.moderation.maxWarnings
     );
+    await ctx.reply(warningsMsg, { parse_mode: "HTML" });
   });
 
   // Clear warnings command (admin only)
@@ -257,7 +209,7 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     }
 
     if (chat.type === "private") {
-      await ctx.reply("This command only works in groups.");
+      await ctx.reply(errorMessages.groupOnly);
       return;
     }
 
@@ -267,7 +219,7 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       member.status === "administrator" || member.status === "creator";
 
     if (!isAdmin) {
-      await ctx.reply("❌ Only administrators can use this command.");
+      await ctx.reply(errorMessages.adminOnly);
       return;
     }
 
@@ -275,17 +227,14 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     const targetUser = message.reply_to_message?.from;
 
     if (!targetUser) {
-      await ctx.reply(
-        "Please reply to a user's message to clear their warnings."
-      );
+      await ctx.reply(errorMessages.replyRequiredClear);
       return;
     }
 
     clearWarnings(targetUser.id);
 
-    await ctx.reply(`✅ Warnings cleared for ${targetUser.first_name}`, {
-      parse_mode: "HTML",
-    });
+    const clearedMsg = warningsClearedMessage(targetUser.first_name);
+    await ctx.reply(clearedMsg, { parse_mode: "HTML" });
   });
 
   logger.info("Commands registered");

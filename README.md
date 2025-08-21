@@ -139,15 +139,15 @@ npm start
 src/
 ├── config/          # Configuration management
 ├── handlers/        # Message and command handlers
+├── interfaces/      # TypeScript definitions
 ├── services/        # OpenAI integration
-├── types/          # TypeScript definitions
-├── utils/          # Logging and utilities
-└── index.ts        # Main bot file
+├── utils/           # Logging and utilities
+└── index.ts         # Main bot file
 ```
 
 ### Adding Custom Rules
 
-You can modify the moderation logic in `src/services/openai.service.ts` to add custom content analysis rules.
+You can modify the moderation logic in `src/services/openai.ts` to add custom content analysis rules.
 
 ## 🤝 Support
 
