@@ -5,7 +5,9 @@ import {
   stemToRegex,
 } from "../helpers/drug-detection";
 
-/** Жёсткие стемы — достаточно совпадения, чтобы считать «drugs» */
+/**
+ * Hard stems - enough match to consider "drugs"
+ */
 const DRUG_STEMS_STRONG = [
   "трав",
   "шиш",
@@ -70,7 +72,9 @@ const DRUG_STEMS_STRONG = [
   "tramadol",
 ] as const;
 
-/** Контекстные стемы — требуют «соседства» цены/единиц или глаголов сделки */
+/**
+ * Context stems - require "neighboring" price/unit or deal verbs
+ */
 const DRUG_STEMS_CONTEXT = [
   "лед",
   "айс",
@@ -85,7 +89,9 @@ const DRUG_STEMS_CONTEXT = [
   "stuff",
 ] as const;
 
-/** Маркеры цены/единиц/сделки */
+/**
+ * Price/unit/deal markers
+ */
 const PRICE_STEMS = [
   "₾",
   "лари",
@@ -137,17 +143,19 @@ const RX_PRICE = PRICE_STEMS.map((s) => stemToRegex(s, false));
 const RX_UNIT = UNIT_STEMS.map((s) => stemToRegex(s, false));
 const RX_DEAL = DEAL_STEMS.map((s) => stemToRegex(s, false));
 
-/** Главная проверка на «drugs» */
-export function hasDrugKeywordsSmart(message: string): boolean {
+/**
+ * Main check for "drugs"
+ */
+export const hasDrugKeywordsSmart = (message: string): boolean => {
   const norm = normalizeBasic(message);
   const squeezed = squeezeLettersDigits(message);
 
-  // 1) Жёсткие ядра — сразу true (ловит Koкс, TPABA, м-е-ф и т.п.)
+  // 1) Hard stems - immediately true (catches Koeks, TPABA, m-e-f etc.)
   if (RX_DRUG_STRONG.some((rx) => rx.test(norm) || rx.test(squeezed))) {
     return true;
   }
 
-  // 2) Контекстные ядра — только если рядом цена/единицы/глаголы сделки
+  // 2) Context stems - only if price/unit/deal verbs are nearby
   const ctxHit = RX_DRUG_CONTEXT.some(
     (rx) => rx.test(norm) || rx.test(squeezed)
   );
@@ -161,4 +169,4 @@ export function hasDrugKeywordsSmart(message: string): boolean {
     near(RX_DRUG_CONTEXT, RX_DEAL, squeezed);
 
   return hasPriceOrUnit || hasDeal;
-}
+};
