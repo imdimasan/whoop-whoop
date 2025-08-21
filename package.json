@@ -19,7 +19,7 @@
   ],
   "author": "imdbv",
   "license": "ISC",
-  "type": "module",
+  "type": "commonjs",
   "dependencies": {
     "dotenv": "^17.2.1",
     "grammy": "^1.38.1",
