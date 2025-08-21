@@ -1,0 +1,35 @@
+{
+  "name": "whoop-whoop",
+  "version": "1.0.0",
+  "description": "Telegram moderation bot with OpenAI integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "setup": "node setup-env.js",
+    "dev": "nodemon --exec tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:prod": "npm run build && npm start"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "moderation",
+    "openai",
+    "grammy"
+  ],
+  "author": "imdbv",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "grammy": "^1.38.1",
+    "openai": "^5.13.1",
+    "winston": "^3.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "nodemon": "^3.1.10",
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2"
+  }
+}
