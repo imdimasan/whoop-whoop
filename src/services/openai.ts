@@ -5,6 +5,11 @@ import {
   IModerationResult,
   TModerationAction,
 } from "../interfaces/i-moderation.js";
+import {
+  getPromptForContent,
+  getThresholdsForContent,
+  determineContentType,
+} from "../config/prompts.js";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -37,7 +42,7 @@ export const analyzeMessage = async (
 
     const { results } = moderation;
 
-    if (!results || results.length === 0) {
+    if (Boolean(!results?.length)) {
       return {
         shouldModerate: false,
         severity: "low",
@@ -46,7 +51,7 @@ export const analyzeMessage = async (
       };
     }
 
-    const result = results[0];
+    const [result] = results;
     const { flagged, categories, category_scores } = result;
 
     // Check if content is flagged by OpenAI moderation
@@ -61,7 +66,7 @@ export const analyzeMessage = async (
         shouldModerate: true,
         reason: `Content violates: ${flaggedCategories.join(", ")}`,
         severity: determineSeverity(maxScore),
-        suggestedAction: determinAction(maxScore),
+        suggestedAction: determinActionByContentType(maxScore, "general"),
         confidence: maxScore,
       };
     }
@@ -83,7 +88,7 @@ export const analyzeMessage = async (
 };
 
 /**
- * Performs custom content analysis using GPT
+ * Performs custom content analysis using GPT with specialized prompts
  * @example
  * const result = await performCustomAnalysis('Check this message');
  */
@@ -91,14 +96,22 @@ const performCustomAnalysis = async (
   message: string
 ): Promise<IModerationResult> => {
   try {
+    // First, determine content type and get appropriate prompt
+    const contentType = determineContentType(message);
+    const prompt = getPromptForContent(message);
+
+    logger.info("Performing custom analysis", {
+      message: message.substring(0, 50),
+      contentType,
+      promptType: contentType,
+    });
+
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: `You are a content moderator for a Telegram group. Analyze the message and determine if it needs moderation.
-          Consider: spam, scams, inappropriate content, hate speech, harassment, or off-topic content.
-          Respond in JSON format: {"shouldModerate": boolean, "reason": string or null, "severity": "low"|"medium"|"high", "confidence": 0-1}`,
+          content: prompt,
         },
         {
           role: "user",
@@ -122,17 +135,62 @@ const performCustomAnalysis = async (
 
     const analysis = JSON.parse(response);
 
+    logger.info("OpenAI analysis result", {
+      contentType,
+      analysis: {
+        shouldModerate:
+          analysis.shouldModerate ||
+          analysis.isDrugRelated ||
+          analysis.isScam ||
+          false,
+        reason: analysis.reason,
+        confidence: analysis.confidence,
+        ...(analysis.scamType && { scamType: analysis.scamType }),
+        ...(analysis.substances && { substances: analysis.substances }),
+      },
+    });
+
+    // Handle different response formats based on content type
+    if (contentType === "drugs") {
+      return handleDrugAnalysis(analysis);
+    }
+
+    if (contentType === "tickets") {
+      return handleTicketAnalysis(analysis);
+    }
+
+    // Handle general moderation response
     const shouldModerate = analysis.shouldModerate || false;
 
-    return {
+    // Check if this is ticket-related content that slipped through
+    let suggestedAction: TModerationAction = "none";
+
+    if (shouldModerate) {
+      suggestedAction = determinActionByContentType(
+        analysis.confidence || 0,
+        contentType
+      );
+    }
+
+    const finalResult = {
       shouldModerate,
       reason: analysis.reason,
       severity: analysis.severity || "low",
-      suggestedAction: shouldModerate
-        ? determinAction(analysis.confidence || 0)
-        : "none",
+      suggestedAction,
       confidence: analysis.confidence || 0,
     };
+
+    logger.info("Final moderation result", {
+      contentType,
+      result: {
+        shouldModerate: finalResult.shouldModerate,
+        action: finalResult.suggestedAction,
+        reason: finalResult.reason,
+        confidence: finalResult.confidence,
+      },
+    });
+
+    return finalResult;
   } catch (error) {
     logger.error("Custom analysis failed", { error });
 
@@ -143,6 +201,110 @@ const performCustomAnalysis = async (
       confidence: 0,
     };
   }
+};
+
+/**
+ * Handles drug-related content analysis
+ * @example
+ * const result = handleDrugAnalysis(analysis, message);
+ */
+const handleDrugAnalysis = (analysis: any): IModerationResult => {
+  const isDrugRelated = analysis.isDrugRelated || false;
+
+  if (isDrugRelated) {
+    const result = {
+      shouldModerate: true,
+      reason: analysis.reason || "Drug-related content detected",
+      severity: "high" as const,
+      suggestedAction: "ban_user" as const,
+      confidence: analysis.confidence || 0.9,
+    };
+
+    logger.info("Drug content detected", {
+      result: {
+        shouldModerate: result.shouldModerate,
+        action: result.suggestedAction,
+        reason: result.reason,
+        confidence: result.confidence,
+        substances: analysis.substances || [],
+      },
+    });
+
+    return result;
+  }
+
+  return {
+    shouldModerate: false,
+    severity: "low",
+    suggestedAction: "none",
+    confidence: analysis.confidence || 0.1,
+  };
+};
+
+/**
+ * Handles ticket-related content analysis
+ * @example
+ * const result = handleTicketAnalysis(analysis);
+ */
+const handleTicketAnalysis = (analysis: any): IModerationResult => {
+  const isTicket = analysis.isTicket || false;
+
+  if (isTicket) {
+    const confidence = analysis.confidence || 0.5;
+
+    // For tickets, only warn the group - never ban/mute users
+    const result = {
+      shouldModerate: true,
+      reason: analysis.reason || "Ticket sale detected - possible fraud risk",
+      severity: "low" as const,
+      suggestedAction: "warn_group" as TModerationAction,
+      confidence,
+    };
+
+    logger.info("Ticket sale detected", {
+      result: {
+        shouldModerate: result.shouldModerate,
+        action: result.suggestedAction,
+        reason: result.reason,
+        confidence: result.confidence,
+      },
+    });
+
+    return result;
+  }
+
+  return {
+    shouldModerate: false,
+    severity: "low",
+    suggestedAction: "none",
+    confidence: analysis.confidence || 0.1,
+  };
+};
+
+/**
+ * Determines action based on confidence score and content type
+ * @example
+ * const action = determinActionByContentType(0.9, 'drugs');
+ */
+const determinActionByContentType = (
+  score: number,
+  contentType: "drugs" | "tickets" | "general"
+): TModerationAction => {
+  const thresholds = getThresholdsForContent(contentType);
+
+  if (score >= thresholds.ban) {
+    return "ban_user";
+  }
+
+  if (score >= thresholds.mute) {
+    return "mute_user";
+  }
+
+  if (score >= thresholds.delete) {
+    return "delete_message";
+  }
+
+  return "none";
 };
 
 /**
@@ -160,29 +322,6 @@ const determineSeverity = (score: number): "low" | "medium" | "high" => {
   }
 
   return "low";
-};
-
-/**
- * Determines action based on confidence score
- * @example
- * const action = determinAction(0.9);
- */
-const determinAction = (score: number): TModerationAction => {
-  const { thresholds } = config.moderation;
-
-  if (score >= thresholds.ban) {
-    return "ban_user";
-  }
-
-  if (score >= thresholds.mute) {
-    return "mute_user";
-  }
-
-  if (score >= thresholds.delete) {
-    return "delete_message";
-  }
-
-  return "none";
 };
 
 // For backward compatibility, export the main function as default

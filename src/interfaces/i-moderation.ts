@@ -6,7 +6,8 @@ export type TModerationAction =
   | "delete_message"
   | "mute_user"
   | "ban_user"
-  | "warn_user";
+  | "warn_user"
+  | "warn_group";
 
 /**
  * Moderation result from OpenAI

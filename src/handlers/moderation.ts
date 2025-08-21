@@ -9,10 +9,14 @@ import {
   mutedUserMessage,
   bannedUserMessage,
   defaultReasons,
+  ticketSaleWarningMessage,
 } from "../config/messages.js";
 
 // Store warnings in memory (could be moved to database later)
 const warnings: Map<number, IUserWarning> = new Map();
+
+// Store last moderation action timestamps to prevent spam
+const lastModerationAction: Map<number, number> = new Map();
 
 /**
  * Handles incoming messages for moderation
@@ -58,6 +62,25 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
       return;
     }
 
+    // Skip commands (messages starting with /) from moderation
+    if (text.startsWith("/")) {
+      logger.debug("Skipping command from moderation", {
+        userId: from.id,
+        command: text.split(" ")[0],
+      });
+      return;
+    }
+
+    // Skip very short messages (likely not harmful)
+    if (text.trim().length < 3) {
+      logger.debug("Skipping very short message from moderation", {
+        userId: from.id,
+        messageLength: text.trim().length,
+      });
+
+      return;
+    }
+
     // Analyze message with OpenAI
     const moderationResult = await analyzeMessage(text, from.id);
 
@@ -70,6 +93,27 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
 
     // Take action if needed
     if (moderationResult.shouldModerate) {
+      // Apply cooldown to prevent rapid successive actions (except for group warnings)
+      if (moderationResult.suggestedAction !== "warn_group") {
+        const now = Date.now();
+        const lastAction = lastModerationAction.get(from.id) || 0;
+        const cooldownMs = 10000; // 10 seconds cooldown for punitive actions
+
+        if (now - lastAction < cooldownMs) {
+          logger.info("Skipping moderation due to cooldown", {
+            userId: from.id,
+            action: moderationResult.suggestedAction,
+            timeSinceLastAction: now - lastAction,
+            cooldownMs,
+          });
+
+          return;
+        }
+
+        // Update last action timestamp for punitive actions only
+        lastModerationAction.set(from.id, now);
+      }
+
       await takeAction(
         ctx,
         moderationResult.suggestedAction,
@@ -113,6 +157,10 @@ const takeAction = async (
 
       case "ban_user":
         await banUser(ctx, reason);
+        break;
+
+      case "warn_group":
+        await warnGroup(ctx, reason);
         break;
 
       default:
@@ -272,6 +320,39 @@ const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     logger.info("User banned", { userId: from.id, chatId: chat.id, reason });
   } catch (error) {
     logger.error("Failed to ban user", { error, userId: from.id });
+  }
+};
+
+/**
+ * Sends a warning message to the group about ticket sales
+ * @example
+ * await warnGroup(ctx, 'Potential ticket fraud detected');
+ */
+const warnGroup = async (ctx: IBotContext, reason?: string): Promise<void> => {
+  const { message } = ctx;
+  const { from } = message || {};
+
+  if (!from) {
+    return;
+  }
+
+  try {
+    // Send warning message to the group
+    const warningMsg = ticketSaleWarningMessage(
+      from.first_name || from.username || "User",
+      reason || "Potential ticket sale detected"
+    );
+
+    await ctx.reply(warningMsg, { parse_mode: "HTML" });
+
+    logger.info("Group warning sent", {
+      userId: from.id,
+      chatId: ctx.chat?.id,
+      reason,
+      type: "ticket_sale",
+    });
+  } catch (error) {
+    logger.error("Failed to send group warning", { error, userId: from.id });
   }
 };
 
