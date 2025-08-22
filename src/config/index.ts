@@ -33,11 +33,6 @@ export const getConfig = (): IConfig => {
       apiKey: OPENAI_API_KEY,
     },
     moderation: {
-      maxWarnings: parseInt(process.env.MAX_WARNINGS || "3", 10),
-      muteDurationMinutes: parseInt(
-        process.env.MUTE_DURATION_MINUTES || "5",
-        10
-      ),
       thresholds: {
         ban: parseFloat(process.env.BAN_THRESHOLD || "0.95"),
         mute: parseFloat(process.env.MUTE_THRESHOLD || "0.8"),

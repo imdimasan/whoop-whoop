@@ -7,8 +7,6 @@ export interface IConfig {
     apiKey: string;
   };
   moderation: {
-    maxWarnings: number;
-    muteDurationMinutes: number;
     thresholds: {
       ban: number;
       mute: number;
