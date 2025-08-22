@@ -10,9 +10,8 @@ export const mildViolationWarning = (
   reason: string
 ): string =>
   `${BOT_TITLE}\n` +
-  `${firstName}, ваше сообщение было удалено.\n` +
-  `Причина: ${reason}\n` +
-  `Пожалуйста, соблюдайте правила группы.`;
+  `Сообщение ${firstName} было удалено.\n` +
+  `Причина: ${reason}\n`;
 
 /**
  * User muted notification message
