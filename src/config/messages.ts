@@ -1,21 +1,17 @@
 const BOT_TITLE = `<b>that's the sound of da police</b> 🚔\n`;
 
 /**
- * Warning message template
+ * Mild violation warning message (auto-deletes)
  * @example
- * const msg = warningMessage('John', 2, 3, 'Inappropriate content');
+ * const msg = mildViolationWarning('John', 'Неподходящий язык');
  */
-export const warningMessage = (
+export const mildViolationWarning = (
   firstName: string,
-  warningCount: number,
-  maxWarnings: number,
   reason: string
 ): string =>
   `${BOT_TITLE}\n` +
-  `Предупреждение ${warningCount}/${maxWarnings}\n` +
-  `${firstName}, ваше сообщение было удалено.\n` +
-  `Причина: ${reason}\n` +
-  `Пожалуйста, соблюдайте правила группы.`;
+  `Сообщение ${firstName} было удалено.\n` +
+  `Причина: ${reason}\n`;
 
 /**
  * User muted notification message
@@ -45,6 +41,18 @@ export const bannedUserMessage = (username: string, reason: string): string => {
 };
 
 /**
+ * Community-based ban message
+ * @example
+ * const msg = communityBannedUserMessage('John');
+ */
+export const communityBannedUserMessage = (username: string): string => {
+  return (
+    `${BOT_TITLE}\n` +
+    `${username} заблокирован на основании жалоб участников группы.`
+  );
+};
+
+/**
  * Ticket sale warning message for the group
  * @example
  * const msg = ticketSaleWarningMessage('John', 'Продажа билетов без встречи может быть мошенничеством');
@@ -54,29 +62,26 @@ export const ticketSaleWarningMessage = (
   aiExplanation: string
 ): string =>
   `${BOT_TITLE}\n` +
-  `⚠️ <b>Подозрительное сообщение от ${firstName}</b> ⚠️\n\n` +
+  `⚠️ <b>Сообщение ${firstName} имеет высокий риск мошенничества</b> ⚠️\n\n` +
   `<b>Причина:</b>\n${aiExplanation}\n\n` +
-  `<b>Советы по безопасности:</b>\n` +
-  `• Встречайтесь лично, когда это возможно.\n` +
-  `• Используйте безопасную оплату.\n` +
-  `• Проверяйте подлинность билета.\n` +
-  `• Не доверяйте незнакомцам в интернете.`;
+  `<b>Считаете это сообщение мошенническим?:</b>\n` +
+  `• Ответьте на сообщение пользователя командой /report.\n`;
 
 /**
  * Bot welcome message for private chats
  * @example
- * const msg = welcomePrivateMessage('whoop_whoop_bot');
+ * const msg = welcomePrivateMessage('yourbotname_bot');
  */
 export const welcomePrivateMessage = (botUsername: string): string => {
   return (
-    `${BOT_TITLE}\n` + `👋 <b>В городе новый шериф: ${botUsername}!</b>\n\n`
+    `👋 <b>В городе новый шериф: ${botUsername}!</b>\n` + `${BOT_TITLE}\n\n`
   );
 };
 
 /**
  * Bot active message for groups
  * @example
- * const msg = welcomeGroupMessage('whoop_whoop_bot');
+ * const msg = welcomeGroupMessage('yourbotname_bot');
  */
 export const welcomeGroupMessage = (botUsername: string): string => {
   return (
@@ -90,9 +95,9 @@ export const welcomeGroupMessage = (botUsername: string): string => {
 /**
  * Help message with commands and information
  * @example
- * const msg = helpMessage(3);
+ * const msg = helpMessage();
  */
-export const helpMessage = (maxWarnings: number): string => {
+export const helpMessage = (): string => {
   return (
     `${BOT_TITLE}\n` +
     `<b>Команды бота:</b>\n\n` +
@@ -100,16 +105,16 @@ export const helpMessage = (maxWarnings: number): string => {
     `/help - Показать это сообщение помощи\n` +
     `/stats - Посмотреть статистику модерации\n` +
     `/settings - Настроить бота (только для админов)\n` +
-    `/warnings - Проверить предупреждения пользователя (ответить на сообщение)\n` +
-    `/clearwarnings - Очистить предупреждения пользователя (только для админов, ответить на сообщение)\n\n` +
+    `/report - Пожаловаться на пользователя (ответить на сообщение)\n\n` +
     `<b>Требования для администратора:</b>\n` +
     `• Право удалять сообщения\n` +
     `• Право ограничивать участников\n\n` +
     `<b>Действия модерации:</b>\n` +
-    `• <b>Предупреждение:</b> После нарушения контента\n` +
-    `• <b>Блокировка:</b> После ${maxWarnings} предупреждений или средней серьёзности\n` +
-    `• <b>Бан:</b> За серьёзные нарушения\n\n` +
-    `Бот использует OpenAI для анализа сообщений на спам, неподходящий контент и нарушения правил.`
+    `• <b>Удаление:</b> Подозрительные предложения работы\n` +
+    `• <b>Блокировка:</b> Потенциальные наркокурьеры\n` +
+    `• <b>Бан:</b> Подтвержденные наркодилеры\n` +
+    `• <b>Репорты:</b> Участники могут жаловаться на любой контент командой /report\n\n` +
+    `Бот специализируется исключительно на антинаркотической деятельности. Все остальные нарушения модерируются участниками через систему репортов.`
   );
 };
 
@@ -144,62 +149,12 @@ export const statsMessage = (
 };
 
 /**
- * Settings message showing current configuration
- * @example
- * const msg = settingsMessage(3, 5, 95, 80, 30);
- */
-export const settingsMessage = (
-  maxWarnings: number,
-  muteDurationMinutes: number,
-  banThreshold: number,
-  muteThreshold: number,
-  deleteThreshold: number
-): string =>
-  `${BOT_TITLE}\n` +
-  `<b>Настройки бота</b>\n\n` +
-  `<b>Система предупреждений:</b>\n` +
-  `Макс. предупреждений: ${maxWarnings}\n` +
-  `Длительность блокировки: ${muteDurationMinutes} минут\n\n` +
-  `<b>Пороги действий:</b>\n` +
-  `Бан: ${banThreshold}% уверенности\n` +
-  `Блокировка: ${muteThreshold}% уверенности\n` +
-  `Удаление/Предупреждение: ${deleteThreshold}% уверенности\n\n` +
-  `<i>Низкие пороги = больше предупреждений, высокие = строже</i>`;
-
-/**
- * User warnings display message
- * @example
- * const msg = userWarningsMessage('John', 2, 3);
- */
-export const userWarningsMessage = (
-  firstName: string,
-  warningCount: number,
-  maxWarnings: number
-): string =>
-  `${BOT_TITLE}\n` +
-  `<b>Предупреждения пользователя</b>\n\n` +
-  `Пользователь: ${firstName}\n` +
-  `Предупреждения: ${warningCount}/${maxWarnings}`;
-
-/**
- * Warnings cleared confirmation message
- * @example
- * const msg = warningsClearedMessage('John');
- */
-export const warningsClearedMessage = (firstName: string): string =>
-  `✅ Предупреждения очищены для ${firstName}`;
-
-/**
  * Error messages
  */
 export const errorMessages = {
   privateOnly: "📊 Эта команда работает только в группах.",
   groupOnly: "Эта команда работает только в группах.",
   adminOnly: "❌ Только администраторы могут использовать эту команду.",
-  replyRequired:
-    "Пожалуйста, ответьте на сообщение пользователя, чтобы проверить его предупреждения.",
-  replyRequiredClear:
-    "Пожалуйста, ответьте на сообщение пользователя, чтобы очистить его предупреждения.",
 } as const;
 
 /**

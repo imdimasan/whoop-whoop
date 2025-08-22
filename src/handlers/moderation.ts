@@ -1,22 +1,41 @@
 import { analyzeMessage } from "../services/openai.js";
-import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { TModerationAction } from "../interfaces/i-moderation.js";
-import { IUserWarning } from "../interfaces/i-user.js";
 import { IBotContext } from "../interfaces/i-bot.js";
+import { addReport, getGroupSettings } from "../services/database.js";
 import {
-  warningMessage,
   mutedUserMessage,
   bannedUserMessage,
   defaultReasons,
   ticketSaleWarningMessage,
+  mildViolationWarning,
+  communityBannedUserMessage,
 } from "../config/messages.js";
-
-// Store warnings in memory (could be moved to database later)
-const warnings: Map<number, IUserWarning> = new Map();
+import { processMessageForOCR } from "../helpers/ocr.js";
 
 // Store last moderation action timestamps to prevent spam
 const lastModerationAction: Map<number, number> = new Map();
+
+// Note: User reports are now stored in PostgreSQL database
+
+/**
+ * Auto-deletes a bot message after specified delay
+ * @example
+ * await autoDeleteMessage(ctx, messageId, 30000); // Delete after 30 seconds
+ */
+const autoDeleteMessage = async (
+  ctx: IBotContext,
+  messageId: number,
+  delayMs: number = 30000
+): Promise<void> => {
+  setTimeout(async () => {
+    try {
+      await ctx.api.deleteMessage(ctx.chat?.id || 0, messageId);
+    } catch (error) {
+      logger.debug("Failed to auto-delete message", { error, messageId });
+    }
+  }, delayMs);
+};
 
 /**
  * Handles incoming messages for moderation
@@ -58,7 +77,30 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
     // Get message text
     const text = message?.text || message?.caption || "";
 
+    // OCR path: single photo + no text
     if (!text) {
+      const ocrText = await processMessageForOCR(ctx);
+
+      if (ocrText && ocrText.length >= 3) {
+        // Re-run moderation on OCR text under same user
+        const moderationResult = await analyzeMessage(ocrText, from.id);
+
+        logger.info("OCR message analyzed", {
+          userId: from.id,
+          chatId: ctx.chat?.id,
+          shouldModerate: moderationResult.shouldModerate,
+          action: moderationResult.suggestedAction,
+        });
+
+        if (moderationResult.shouldModerate) {
+          await takeAction(
+            ctx,
+            moderationResult.suggestedAction,
+            moderationResult.reason
+          );
+        }
+      }
+
       return;
     }
 
@@ -172,7 +214,7 @@ const takeAction = async (
 };
 
 /**
- * Deletes a message and warns the user
+ * Deletes a message and shows warning (auto-deletes)
  * @example
  * await deleteMessage(ctx, 'Inappropriate content');
  */
@@ -191,33 +233,22 @@ const deleteMessage = async (
     // Delete the message
     await ctx.deleteMessage();
 
-    // Track warning
-    await addWarning(
-      from.id,
-      ctx.chat?.id || 0,
-      reason || defaultReasons.contentViolation
-    );
-
-    // Send warning message
-    const warningCount = warnings.get(from.id)?.count || 1;
-
-    const warningMsg = warningMessage(
+    // Send mild warning message
+    const warningMsg = mildViolationWarning(
       from.first_name,
-      warningCount,
-      config.moderation.maxWarnings,
       reason || defaultReasons.contentViolation
     );
 
-    const warningReply = await ctx.reply(warningMsg, { parse_mode: "HTML" });
+    const reply = await ctx.reply(warningMsg, { parse_mode: "HTML" });
 
-    // Delete warning message after 10 seconds
-    setTimeout(async () => {
-      try {
-        await ctx.api.deleteMessage(ctx.chat?.id || 0, warningReply.message_id);
-      } catch (error) {
-        logger.error("Failed to delete warning message", { error });
-      }
-    }, 10000);
+    // Auto-delete the warning message after 15 seconds
+    await autoDeleteMessage(ctx, reply.message_id, 15000);
+
+    logger.info("Message deleted with warning", {
+      userId: from.id,
+      chatId: ctx.chat?.id,
+      reason: reason || defaultReasons.contentViolation,
+    });
   } catch (error) {
     logger.error("Failed to delete message", {
       error,
@@ -243,10 +274,12 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     // Delete the message first
     await ctx.deleteMessage();
 
+    // Get group-specific mute duration
+    const groupSettings = await getGroupSettings(chat.id);
+    const muteDurationMinutes = groupSettings.muteDurationMinutes || 60;
+
     // Calculate mute duration
-    const untilDate =
-      Math.floor(Date.now() / 1000) +
-      config.moderation.muteDurationMinutes * 60;
+    const untilDate = Math.floor(Date.now() / 1000) + muteDurationMinutes * 60;
 
     // Restrict user
     await ctx.restrictChatMember(
@@ -270,16 +303,19 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     // Send notification
     const muteMsg = mutedUserMessage(
       from.first_name,
-      config.moderation.muteDurationMinutes,
+      muteDurationMinutes,
       reason || defaultReasons.policyViolation
     );
 
-    await ctx.reply(muteMsg, { parse_mode: "HTML" });
+    const reply = await ctx.reply(muteMsg, { parse_mode: "HTML" });
+
+    // Auto-delete the mute notification after 30 seconds
+    await autoDeleteMessage(ctx, reply.message_id, 30000);
 
     logger.info("User muted", {
       userId: from.id,
       chatId: chat.id,
-      duration: config.moderation.muteDurationMinutes,
+      duration: muteDurationMinutes,
     });
   } catch (error) {
     logger.error("Failed to mute user", { error, userId: from.id });
@@ -312,10 +348,10 @@ const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
       reason || defaultReasons.severeViolation
     );
 
-    await ctx.reply(banMsg, { parse_mode: "HTML" });
+    const reply = await ctx.reply(banMsg, { parse_mode: "HTML" });
 
-    // Clear warnings
-    warnings.delete(from.id);
+    // Auto-delete the ban notification after 30 seconds
+    await autoDeleteMessage(ctx, reply.message_id, 30000);
 
     logger.info("User banned", { userId: from.id, chatId: chat.id, reason });
   } catch (error) {
@@ -357,63 +393,97 @@ const warnGroup = async (ctx: IBotContext, reason?: string): Promise<void> => {
 };
 
 /**
- * Adds a warning for a user
+ * Handles user report for a specific message
  * @example
- * await addWarning(123, 456, 'Spam');
+ * const result = await handleReport(ctx, targetUserId, messageId);
  */
-const addWarning = async (
-  userId: number,
-  chatId: number,
-  reason: string
-): Promise<void> => {
-  const existing = warnings.get(userId);
+export const handleReport = async (
+  ctx: IBotContext,
+  targetUserId: number,
+  targetMessageId: number
+): Promise<{ success: boolean; message: string; shouldBan?: boolean }> => {
+  const { from, chat } = ctx;
 
-  if (existing) {
-    existing.count++;
-    existing.lastWarning = new Date();
-    existing.reasons.push(reason);
-
-    // Check if max warnings reached
-    if (existing.count >= config.moderation.maxWarnings) {
-      // Reset warnings and escalate to mute
-      warnings.delete(userId);
-      logger.info("Max warnings reached, escalating", {
-        userId,
-        warnings: existing.count,
-      });
-    }
-  } else {
-    warnings.set(userId, {
-      userId,
-      chatId,
-      count: 1,
-      lastWarning: new Date(),
-      reasons: [reason],
-    });
+  if (!from || !chat) {
+    return { success: false, message: "Ошибка: недостаточно данных" };
   }
-};
 
-/**
- * Gets warning count for a user
- * @example
- * const count = getWarningCount(123);
- */
-export const getWarningCount = (userId: number): number => {
-  return warnings.get(userId)?.count || 0;
-};
+  // Prevent self-reporting
+  if (from.id === targetUserId) {
+    return { success: false, message: "Нельзя пожаловаться на самого себя" };
+  }
 
-/**
- * Clears warnings for a user
- * @example
- * clearWarnings(123);
- */
-export const clearWarnings = (userId: number): void => {
-  warnings.delete(userId);
+  // Get group-specific settings (with fallback to default)
+  const groupSettings = await getGroupSettings(chat.id);
+  const maxReports = groupSettings.maxReports || 10;
+
+  // Add report to database
+  const result = await addReport(
+    targetMessageId,
+    chat.id,
+    targetUserId,
+    from.id
+  );
+
+  if (!result.success) {
+    return { success: false, message: "Ошибка базы данных" };
+  }
+
+  if (result.alreadyReported) {
+    return { success: false, message: "Вы уже пожаловались на это сообщение" };
+  }
+
+  logger.info("Message reported", {
+    reporterId: from.id,
+    targetUserId,
+    targetMessageId,
+    chatId: chat.id,
+    reportCount: result.reportCount,
+    threshold: maxReports,
+  });
+
+  // Check if threshold reached
+  if (result.reportCount >= maxReports) {
+    // Ban the user
+    try {
+      await ctx.banChatMember(targetUserId);
+
+      // Send community ban message
+      const banMsg = communityBannedUserMessage(
+        `User ${targetUserId}` // We'll get the username from the context in the command handler
+      );
+
+      const reply = await ctx.reply(banMsg, { parse_mode: "HTML" });
+
+      // Auto-delete after 30 seconds
+      await autoDeleteMessage(ctx, reply.message_id, 30000);
+
+      logger.info("User banned by community reports", {
+        targetUserId,
+        targetMessageId,
+        chatId: chat.id,
+        reportCount: result.reportCount,
+      });
+
+      return {
+        success: true,
+        message: `Пользователь заблокирован (${result.reportCount}/${maxReports} жалоб)`,
+        shouldBan: true,
+      };
+    } catch (error) {
+      logger.error("Failed to ban user by reports", { error, targetUserId });
+      return { success: false, message: "Ошибка при блокировке пользователя" };
+    }
+  }
+
+  return {
+    success: true,
+    message: `Жалоба принята (${result.reportCount}/${maxReports})`,
+  };
 };
 
 // For backward compatibility, export the main functions as default
 export default {
   handleMessage,
-  getWarningCount,
-  clearWarnings,
+  handleReport,
 };

@@ -42,14 +42,13 @@ const setup = async () => {
 
   // Get bot username
   const botUsername =
-    (await question("Bot Username (default: whoop_whoop_bot): ")) ||
-    "whoop_whoop_bot";
+    (await question("Bot Username (default: yourbotname_bot): ")) ||
+    "yourbotname_bot";
 
-  // Get moderation settings
-  const maxWarnings =
-    (await question("Max warnings before action (default: 3): ")) || "3";
-  const muteDuration =
-    (await question("Mute duration in minutes (default: 5): ")) || "5";
+  // Get database URL
+  console.log("\nDatabase configuration:");
+  console.log("Example: postgresql://username:password@host:port/database");
+  const databaseUrl = await question("PostgreSQL Database URL: ");
 
   console.log("\nAction thresholds (0.0-1.0, higher = stricter):");
   const banThreshold =
@@ -66,13 +65,12 @@ BOT_TOKEN=${botToken}
 # OpenAI Configuration
 OPENAI_API_KEY=${openaiKey}
 
+# Database Configuration
+DATABASE_URL=${databaseUrl}
+
 # Bot Configuration
 BOT_USERNAME=${botUsername}
 LOG_LEVEL=info
-
-# Moderation Settings
-MAX_WARNINGS=${maxWarnings}
-MUTE_DURATION_MINUTES=${muteDuration}
 
 # Action Thresholds (0.0-1.0)
 BAN_THRESHOLD=${banThreshold}
@@ -89,7 +87,10 @@ DELETE_THRESHOLD=${deleteThreshold}`;
   console.log(
     "3. Make the bot an administrator with delete and restrict permissions"
   );
-  console.log("4. The bot will automatically moderate messages in the group");
+  console.log(
+    "4. Use /settings command in the group to configure moderation settings"
+  );
+  console.log("5. The bot will automatically moderate messages in the group");
 
   rl.close();
 };

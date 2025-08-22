@@ -1,20 +1,20 @@
 import { Bot, GrammyError, HttpError } from "grammy";
 import { config } from "./config/index.js";
 import { logger } from "./utils/logger.js";
-import {
-  handleMessage,
-  getWarningCount,
-  clearWarnings,
-} from "./handlers/moderation.js";
+import { handleMessage, handleReport } from "./handlers/moderation.js";
 import { IBotContext } from "./interfaces/i-bot.js";
+import { initializeTables } from "./services/database.js";
+import {
+  showSettingsMenu,
+  handleSettingsCallback,
+  handleSettingUpdate,
+  handleSettingsBack,
+} from "./handlers/settings.js";
 import {
   welcomePrivateMessage,
   welcomeGroupMessage,
   helpMessage,
   statsMessage,
-  settingsMessage,
-  userWarningsMessage,
-  warningsClearedMessage,
   errorMessages,
 } from "./config/messages.js";
 
@@ -24,6 +24,11 @@ import {
  * startBot().catch(console.error);
  */
 const startBot = async (): Promise<void> => {
+  const { botToken } = config?.telegram || {};
+
+  if (!botToken) {
+    throw new Error("BOT_TOKEN is required in environment variables");
+  }
   // Create bot instance
   const bot = new Bot<IBotContext>(config.telegram.botToken);
 
@@ -84,24 +89,34 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
   // Start command
   bot.command("start", async (ctx) => {
     const { chat } = ctx;
+    const { botUsername } = config?.telegram || {};
 
-    if (!chat) {
+    if (!chat || !botUsername) {
       return;
     }
 
     if (chat.type === "private") {
-      const welcomeMsg = welcomePrivateMessage(config.telegram.botUsername);
+      const welcomeMsg = welcomePrivateMessage(botUsername);
       await ctx.reply(welcomeMsg, { parse_mode: "HTML" });
     } else {
-      const groupMsg = welcomeGroupMessage(config.telegram.botUsername);
+      const groupMsg = welcomeGroupMessage(botUsername);
       await ctx.reply(groupMsg, { parse_mode: "HTML" });
     }
   });
 
   // Help command
   bot.command("help", async (ctx) => {
-    const helpMsg = helpMessage(config.moderation.maxWarnings);
-    await ctx.reply(helpMsg, { parse_mode: "HTML" });
+    const helpMsg = helpMessage();
+    const reply = await ctx.reply(helpMsg, { parse_mode: "HTML" });
+
+    // Auto-delete help message after 60 seconds
+    setTimeout(async () => {
+      try {
+        await ctx.api.deleteMessage(ctx.chat?.id || 0, reply.message_id);
+      } catch (error) {
+        // Ignore deletion errors
+      }
+    }, 60000);
   });
 
   // Stats command
@@ -134,7 +149,16 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       canRestrict,
       missingPerms
     );
-    await ctx.reply(statsMsg, { parse_mode: "HTML" });
+    const reply = await ctx.reply(statsMsg, { parse_mode: "HTML" });
+
+    // Auto-delete stats message after 45 seconds
+    setTimeout(async () => {
+      try {
+        await ctx.api.deleteMessage(ctx.chat?.id || 0, reply.message_id);
+      } catch (error) {
+        // Ignore deletion errors
+      }
+    }, 45000);
   });
 
   // Settings command (admin only)
@@ -160,48 +184,11 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       return;
     }
 
-    const settingsMsg = settingsMessage(
-      config.moderation.maxWarnings,
-      config.moderation.muteDurationMinutes,
-      Math.round(config.moderation.thresholds.ban * 100),
-      Math.round(config.moderation.thresholds.mute * 100),
-      Math.round(config.moderation.thresholds.delete * 100)
-    );
-    await ctx.reply(settingsMsg, { parse_mode: "HTML" });
+    await showSettingsMenu(ctx);
   });
 
-  // Warnings command
-  bot.command("warnings", async (ctx) => {
-    const { message, chat } = ctx;
-
-    if (!message || !chat) {
-      return;
-    }
-
-    if (chat.type === "private") {
-      await ctx.reply(errorMessages.groupOnly);
-      return;
-    }
-
-    // Get mentioned user or reply target
-    const targetUser = message.reply_to_message?.from;
-
-    if (!targetUser) {
-      await ctx.reply(errorMessages.replyRequired);
-      return;
-    }
-
-    const warningCount = getWarningCount(targetUser.id);
-    const warningsMsg = userWarningsMessage(
-      targetUser.first_name,
-      warningCount,
-      config.moderation.maxWarnings
-    );
-    await ctx.reply(warningsMsg, { parse_mode: "HTML" });
-  });
-
-  // Clear warnings command (admin only)
-  bot.command("clearwarnings", async (ctx) => {
+  // Report command
+  bot.command("report", async (ctx) => {
     const { from, message, chat } = ctx;
 
     if (!from || !message || !chat) {
@@ -213,28 +200,111 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       return;
     }
 
-    // Check if user is admin
-    const member = await ctx.getChatMember(from.id);
-    const isAdmin =
-      member.status === "administrator" || member.status === "creator";
+    // Get target message and user from reply
+    const targetMessage = message.reply_to_message;
+    const targetUser = targetMessage?.from;
 
-    if (!isAdmin) {
-      await ctx.reply(errorMessages.adminOnly);
+    if (!targetMessage || !targetUser) {
+      const errorMsg = await ctx.reply(
+        "❌ Ответьте на сообщение пользователя, чтобы пожаловаться на него.",
+        { parse_mode: "HTML" }
+      );
+
+      // Auto-delete error message after 10 seconds
+      setTimeout(async () => {
+        try {
+          await ctx.api.deleteMessage(chat.id, errorMsg.message_id);
+        } catch (error) {
+          // Ignore deletion errors
+        }
+      }, 10000);
       return;
     }
 
-    // Get mentioned user or reply target
-    const targetUser = message.reply_to_message?.from;
+    // Skip bots
+    if (targetUser.is_bot) {
+      const errorMsg = await ctx.reply("❌ Нельзя пожаловаться на бота.", {
+        parse_mode: "HTML",
+      });
 
-    if (!targetUser) {
-      await ctx.reply(errorMessages.replyRequiredClear);
+      // Auto-delete error message after 10 seconds
+      setTimeout(async () => {
+        try {
+          await ctx.api.deleteMessage(chat.id, errorMsg.message_id);
+        } catch (error) {
+          // Ignore deletion errors
+        }
+      }, 10000);
       return;
     }
 
-    clearWarnings(targetUser.id);
+    // Handle the report with message ID
+    const result = await handleReport(
+      ctx,
+      targetUser.id,
+      targetMessage.message_id
+    );
 
-    const clearedMsg = warningsClearedMessage(targetUser.first_name);
-    await ctx.reply(clearedMsg, { parse_mode: "HTML" });
+    // Update ban message with actual username
+    let responseMessage = result.message;
+    if (result.shouldBan && result.success) {
+      // Update the community ban message with proper username
+      const banMsg = `${
+        targetUser.username || targetUser.first_name
+      } заблокирован на основании жалоб участников группы.`;
+      responseMessage = banMsg;
+    }
+
+    const reply = await ctx.reply(
+      result.success ? `✅ ${responseMessage}` : `❌ ${result.message}`,
+      { parse_mode: "HTML" }
+    );
+
+    // Auto-delete response after 15 seconds (unless it's a ban message)
+    if (!result.shouldBan) {
+      setTimeout(async () => {
+        try {
+          await ctx.api.deleteMessage(chat.id, reply.message_id);
+        } catch (error) {
+          // Ignore deletion errors
+        }
+      }, 15000);
+    }
+  });
+
+  // Handle callback queries for settings
+  bot.on("callback_query", async (ctx) => {
+    const { data } = ctx.callbackQuery || {};
+
+    if (!data) {
+      return;
+    }
+
+    // Back to settings (check this first before generic settings_)
+    if (data === "settings_back") {
+      await handleSettingsBack(ctx);
+      return;
+    }
+
+    // Settings callbacks
+    if (data.startsWith("settings_")) {
+      await handleSettingsCallback(ctx);
+      return;
+    }
+
+    // Mute duration callbacks
+    if (data.startsWith("set_mute_")) {
+      const minutes = parseInt(data.replace("set_mute_", ""));
+      await handleSettingUpdate(ctx, "mute", minutes);
+      return;
+    }
+
+    // Max reports callbacks
+    if (data.startsWith("set_reports_")) {
+      const reports = parseInt(data.replace("set_reports_", ""));
+      await handleSettingUpdate(ctx, "reports", reports);
+      return;
+    }
   });
 
   logger.info("Commands registered");
@@ -246,6 +316,10 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
 const main = async (): Promise<void> => {
   try {
     logger.info("Initializing bot...");
+
+    // Initialize database tables
+    await initializeTables();
+
     await startBot();
   } catch (error) {
     logger.error("Failed to start bot", { error });

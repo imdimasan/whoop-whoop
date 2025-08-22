@@ -87,6 +87,8 @@ const DRUG_STEMS_CONTEXT = [
   "продукт",
   "материал",
   "stuff",
+  "клады",
+  "клад",
 ] as const;
 
 /**
@@ -135,6 +137,10 @@ const DEAL_STEMS = [
   "pm",
   "telegram",
   "телеграм",
+  "meek900",
+  "MEEK900",
+  "тг поиске",
+  "тг поиск",
 ];
 
 const RX_DRUG_STRONG = DRUG_STEMS_STRONG.map((s) => stemToRegex(s));
@@ -156,10 +162,11 @@ export const hasDrugKeywordsSmart = (message: string): boolean => {
   }
 
   // 2) Context stems - only if price/unit/deal verbs are nearby
-  const ctxHit = RX_DRUG_CONTEXT.some(
-    (rx) => rx.test(norm) || rx.test(squeezed)
-  );
-  if (!ctxHit) return false;
+  const ctx = RX_DRUG_CONTEXT.some((rx) => rx.test(norm) || rx.test(squeezed));
+
+  if (!ctx) {
+    return false;
+  }
 
   const hasPriceOrUnit =
     near(RX_DRUG_CONTEXT, [...RX_PRICE, ...RX_UNIT], norm) ||
