@@ -8,3 +8,15 @@ export interface IUserWarning {
   lastWarning: Date;
   reasons: string[];
 }
+
+/**
+ * User report tracking
+ */
+export interface IUserReport {
+  targetUserId: number;
+  chatId: number;
+  reporterIds: Set<number>;
+  reportCount: number;
+  firstReport: Date;
+  lastReport: Date;
+}

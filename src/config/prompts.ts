@@ -1,62 +1,64 @@
 import { hasDrugKeywordsSmart } from "./stems";
 
 /**
- * General moderation: bad words, insults, harassment
+ * General moderation: suspicious job offers (potential drug courier recruitment)
  */
-export const MAIN_MODERATION_PROMPT = `You moderate a Telegram group. Check for harmful content that disrupts the community.
+export const MAIN_MODERATION_PROMPT = `You moderate a Telegram group. Focus ONLY on detecting suspicious job offers that may be drug-related courier recruitment.
 
-SEVERITY LEVELS:
-- LOW: Mild inappropriate language about things/situations, childish words, self-referential language - DELETE + warning only
-- MEDIUM: Personal insults DIRECTED AT OTHER USERS, targeted harassment, aggressive language - MUTE
-- HIGH: Hate speech, severe harassment, threats, explicit sexual content - BAN
+IGNORE ALL OF THESE (DO NOT MODERATE):
+- Bad words, swearing, profanity in ANY context
+- Personal insults between users  
+- Casual inappropriate language
+- Product prices and normal commerce
+- Regular marketplace messages
+- ANY conversation content, arguments, or language issues
 
-CRITICAL: Distinguish between talking ABOUT things vs talking TO/ABOUT people:
-- "Это говно" (about a thing/situation) = LOW
-- "Ты говно" (about a person) = MEDIUM
+ONLY FLAG suspicious job/work offers that match these patterns:
 
-DO NOT flag:
-- Product prices (e.g., "80 гел", "100 руб", "$50", "€30")
-- Normal commerce/marketplace messages
-- Casual swearing in discussion context (not directed at people)
-- Childish/silly language like "какашки", "говно" when not insulting someone
-- Self-referential language where user talks about themselves ("я не мудак", "I'm not an idiot")
-- Users defending themselves or their reputation
-- Currency amounts or financial discussions
+SUSPICIOUS COURIER/DELIVERY JOBS:
+- Unusually high pay for simple physical tasks
+- Vague job descriptions with high money
+- "Easy money" delivery/transport jobs
+- Quick gigs with disproportionate payment
+- Warehouse work with suspiciously high daily rates
 
-DO flag suspicious courier recruitment (may be drug-related):
-- Unusually high pay for simple tasks: "помогите занести шкаф на 5-этаж, заплачу 5000р"
-- Vague job offers with high money: "Нужны разнорабочие, рабочие на завод мебели 6300р"
-- Quick high-paying gigs: "Грузчики на сегодня 1000р за 1 час"
+EXAMPLES TO MODERATE (HIGH severity only):
+- "Сортировка на складе, 3.200 в день" (warehouse sorting, 3200 per day - too high)
+- "помогите занести шкаф на 5-этаж, заплачу 5000р" (help carry furniture, 5000r - suspicious)
+- "Нужны разнорабочие, рабочие на завод мебели 6300р" (workers needed, 6300r - too much)
+- "Грузчики на сегодня 1000р за 1 час" (movers today 1000r per hour - suspicious)
+- "Доставка документов, хорошая оплата" (document delivery, good pay - vague)
+- "Курьер на день, до 5000р" (courier for a day, up to 5000r - suspicious)
 
-EXAMPLES OF LOW SEVERITY (DELETE + warning only):
-- "Я не какой то мудак мошенник" (self-defense)
-- "Думаешь я идиот?" (rhetorical question about oneself)
-- "Я не дурак, понимаю что происходит" (self-referential)
-- "Это говно, но работает" (opinion about object/thing)
-- "Не ну это конечно говнище" (expressing negative opinion about situation/thing)
-- "Какая фигня" (general expression of dissatisfaction)
-- "Полное дерьмо" (when talking about objects/situations, not people)
+EXAMPLES NOT TO MODERATE:
+- Normal job offers with reasonable pay (under 2000r per day)
+- Legitimate business advertisements  
+- ANY language, swearing, arguments, conversations
+- Regular commerce and sales
 
-EXAMPLES TO MODERATE:
-- "Ты мудак" → MEDIUM (direct insult at user)
-- "Все тут идиоты" → MEDIUM (insulting group)
-- "Иди нахуй" → HIGH (aggressive directed language)
+IMPORTANT: Only flag job offers that seem designed to recruit drug couriers through unusually high pay for simple tasks. Ignore ALL other content including any language issues. Reason should be in Russian.
 
-IMPORTANT: Be lenient with casual language. Only moderate content that is clearly harmful or targeted harassment of OTHER PEOPLE. 
-
-CONFIDENCE GUIDELINES:
-- LOW severity should have confidence 0.3-0.7 (mild language about things)
-- MEDIUM severity should have confidence 0.7-0.9 (insults directed at people)
-- HIGH severity should have confidence 0.9+ (severe harassment, threats)
-
-Never give confidence 1.0 unless it's extremely severe content like death threats. Reason should be in Russian.
-
-Return JSON: {"shouldModerate": boolean, "reason": string|null, "severity": "low"|"medium"|"high", "confidence": number(0..1)}`;
+Return JSON: {"shouldModerate": boolean, "reason": string|null, "severity": "high", "confidence": number(0.7..0.9)}`;
 
 /**
  * Ticket detection: warning only
  */
-export const TICKET_DETECTION_PROMPT = `Detect ticket sales. Look for: concert tickets, event tickets, sports tickets being sold. Reason should be in Russian.
+export const TICKET_DETECTION_PROMPT = `Detect ticket sales vs ticket buying requests. 
+
+ONLY FLAG ticket SALES (warn the group about potential fraud):
+- "Продаю билеты на концерт"
+- "Есть лишний билет, продам"
+- "Билеты на футбол, цена договорная"
+- Messages offering tickets for sale
+
+DO NOT FLAG ticket BUYING requests (these are allowed):
+- "Куплю билет на концерт"
+- "Ищу билеты на матч"
+- "Кто продает билеты?"
+- "Нужен билет на спектакль"
+- Messages looking to purchase tickets
+
+Only moderate when someone is SELLING tickets, not when they want to BUY tickets. Reason should be in Russian.
 
 Return JSON: {"isTicket": true|false, "confidence": number, "reason": string|null}`;
 
@@ -141,7 +143,7 @@ export const DETECTION_PATTERNS = {
  * Action thresholds
  */
 export const CONFIDENCE_THRESHOLDS = {
-  general: { ban: 0.95, mute: 0.8, delete: 0.5 }, // More lenient for casual language
+  general: { ban: 0.85, mute: 0.75, delete: 0.7 }, // For suspicious job offers only
   tickets: { ban: 1.0, mute: 1.0, delete: 1.0 }, // Never ban/mute tickets
   drugs: { ban: 0.5, mute: 0.3, delete: 0.1 }, // Aggressive for drugs
 };
@@ -168,7 +170,7 @@ export const getPromptForContent = (message: string): string => {
     return TICKET_DETECTION_PROMPT;
   }
 
-  // Default to general moderation
+  // Default to general moderation (suspicious job offers)
   return MAIN_MODERATION_PROMPT;
 };
 

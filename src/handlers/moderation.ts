@@ -3,16 +3,24 @@ import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { TModerationAction } from "../interfaces/i-moderation.js";
 import { IBotContext } from "../interfaces/i-bot.js";
+import { IUserReport } from "../interfaces/i-user.js";
 import {
   mutedUserMessage,
   bannedUserMessage,
   defaultReasons,
   ticketSaleWarningMessage,
   mildViolationWarning,
+  communityBannedUserMessage,
 } from "../config/messages.js";
 
 // Store last moderation action timestamps to prevent spam
 const lastModerationAction: Map<number, number> = new Map();
+
+// Store user reports (targetUserId -> IUserReport)
+const userReports: Map<number, IUserReport> = new Map();
+
+// Report threshold - number of reports needed to ban a user
+const REPORT_THRESHOLD = 1;
 
 /**
  * Auto-deletes a bot message after specified delay
@@ -363,7 +371,109 @@ const warnGroup = async (ctx: IBotContext, reason?: string): Promise<void> => {
   }
 };
 
+/**
+ * Handles user report
+ * @example
+ * const result = await handleReport(ctx, targetUserId);
+ */
+export const handleReport = async (
+  ctx: IBotContext,
+  targetUserId: number
+): Promise<{ success: boolean; message: string; shouldBan?: boolean }> => {
+  const { from, chat } = ctx;
+
+  if (!from || !chat) {
+    return { success: false, message: "Ошибка: недостаточно данных" };
+  }
+
+  // Prevent self-reporting
+  if (from.id === targetUserId) {
+    return { success: false, message: "Нельзя пожаловаться на самого себя" };
+  }
+
+  const reportKey = targetUserId;
+  const now = new Date();
+
+  // Get or create report record
+  let reportRecord = userReports.get(reportKey);
+
+  if (!reportRecord) {
+    reportRecord = {
+      targetUserId,
+      chatId: chat.id,
+      reporterIds: new Set(),
+      reportCount: 0,
+      firstReport: now,
+      lastReport: now,
+    };
+    userReports.set(reportKey, reportRecord);
+  }
+
+  // Check if user already reported this person
+  if (reportRecord.reporterIds.has(from.id)) {
+    return {
+      success: false,
+      message: "Вы уже пожаловались на этого пользователя",
+    };
+  }
+
+  // Add report
+  reportRecord.reporterIds.add(from.id);
+  reportRecord.reportCount++;
+  reportRecord.lastReport = now;
+
+  logger.info("User reported", {
+    reporterId: from.id,
+    targetUserId,
+    chatId: chat.id,
+    reportCount: reportRecord.reportCount,
+    threshold: REPORT_THRESHOLD,
+  });
+
+  // Check if threshold reached
+  if (reportRecord.reportCount >= REPORT_THRESHOLD) {
+    // Ban the user
+    try {
+      await ctx.banChatMember(targetUserId);
+
+      // Send community ban message
+      const banMsg = communityBannedUserMessage(
+        `User ${targetUserId}` // We'll get the username from the context in the command handler
+      );
+
+      const reply = await ctx.reply(banMsg, { parse_mode: "HTML" });
+
+      // Auto-delete after 30 seconds
+      await autoDeleteMessage(ctx, reply.message_id, 30000);
+
+      // Clear reports for this user
+      userReports.delete(reportKey);
+
+      logger.info("User banned by community reports", {
+        targetUserId,
+        chatId: chat.id,
+        reportCount: reportRecord.reportCount,
+      });
+
+      return {
+        success: true,
+        message: `Пользователь заблокирован (${reportRecord.reportCount}/${REPORT_THRESHOLD} жалоб)`,
+        shouldBan: true,
+      };
+    } catch (error) {
+      logger.error("Failed to ban user by reports", { error, targetUserId });
+      return { success: false, message: "Ошибка при блокировке пользователя" };
+    }
+  }
+
+  return {
+    success: true,
+    message: `Жалоба принята (${reportRecord.reportCount}/${REPORT_THRESHOLD})`,
+  };
+};
+
 // For backward compatibility, export the main functions as default
 export default {
   handleMessage,
+  handleReport,
 };
