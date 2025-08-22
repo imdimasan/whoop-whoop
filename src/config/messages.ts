@@ -150,27 +150,6 @@ export const statsMessage = (
 };
 
 /**
- * Settings message showing current configuration
- * @example
- * const msg = settingsMessage(5, 95, 80, 30);
- */
-export const settingsMessage = (
-  muteDurationMinutes: number,
-  banThreshold: number,
-  muteThreshold: number,
-  deleteThreshold: number
-): string =>
-  `${BOT_TITLE}\n` +
-  `<b>Настройки бота</b>\n\n` +
-  `<b>Параметры модерации:</b>\n` +
-  `Длительность блокировки: ${muteDurationMinutes} минут\n\n` +
-  `<b>Пороги действий:</b>\n` +
-  `Бан: ${banThreshold}% уверенности\n` +
-  `Блокировка: ${muteThreshold}% уверенности\n` +
-  `Удаление: ${deleteThreshold}% уверенности\n\n` +
-  `<i>Низкие пороги = больше действий, высокие = строже</i>`;
-
-/**
  * Error messages
  */
 export const errorMessages = {

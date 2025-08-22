@@ -3,12 +3,18 @@ import { config } from "./config/index.js";
 import { logger } from "./utils/logger.js";
 import { handleMessage, handleReport } from "./handlers/moderation.js";
 import { IBotContext } from "./interfaces/i-bot.js";
+import { initializeTables } from "./services/database.js";
+import {
+  showSettingsMenu,
+  handleSettingsCallback,
+  handleSettingUpdate,
+  handleSettingsBack,
+} from "./handlers/settings.js";
 import {
   welcomePrivateMessage,
   welcomeGroupMessage,
   helpMessage,
   statsMessage,
-  settingsMessage,
   errorMessages,
 } from "./config/messages.js";
 
@@ -178,22 +184,7 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       return;
     }
 
-    const settingsMsg = settingsMessage(
-      config.moderation.muteDurationMinutes,
-      Math.round(config.moderation.thresholds.ban * 100),
-      Math.round(config.moderation.thresholds.mute * 100),
-      Math.round(config.moderation.thresholds.delete * 100)
-    );
-    const reply = await ctx.reply(settingsMsg, { parse_mode: "HTML" });
-
-    // Auto-delete settings message after 60 seconds
-    setTimeout(async () => {
-      try {
-        await ctx.api.deleteMessage(ctx.chat?.id || 0, reply.message_id);
-      } catch (error) {
-        // Ignore deletion errors
-      }
-    }, 60000);
+    await showSettingsMenu(ctx);
   });
 
   // Report command
@@ -209,10 +200,11 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       return;
     }
 
-    // Get target user from reply
-    const targetUser = message.reply_to_message?.from;
+    // Get target message and user from reply
+    const targetMessage = message.reply_to_message;
+    const targetUser = targetMessage?.from;
 
-    if (!targetUser) {
+    if (!targetMessage || !targetUser) {
       const errorMsg = await ctx.reply(
         "❌ Ответьте на сообщение пользователя, чтобы пожаловаться на него.",
         { parse_mode: "HTML" }
@@ -246,8 +238,12 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       return;
     }
 
-    // Handle the report
-    const result = await handleReport(ctx, targetUser.id);
+    // Handle the report with message ID
+    const result = await handleReport(
+      ctx,
+      targetUser.id,
+      targetMessage.message_id
+    );
 
     // Update ban message with actual username
     let responseMessage = result.message;
@@ -276,6 +272,41 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     }
   });
 
+  // Handle callback queries for settings
+  bot.on("callback_query", async (ctx) => {
+    const { data } = ctx.callbackQuery || {};
+
+    if (!data) {
+      return;
+    }
+
+    // Back to settings (check this first before generic settings_)
+    if (data === "settings_back") {
+      await handleSettingsBack(ctx);
+      return;
+    }
+
+    // Settings callbacks
+    if (data.startsWith("settings_")) {
+      await handleSettingsCallback(ctx);
+      return;
+    }
+
+    // Mute duration callbacks
+    if (data.startsWith("set_mute_")) {
+      const minutes = parseInt(data.replace("set_mute_", ""));
+      await handleSettingUpdate(ctx, "mute", minutes);
+      return;
+    }
+
+    // Max reports callbacks
+    if (data.startsWith("set_reports_")) {
+      const reports = parseInt(data.replace("set_reports_", ""));
+      await handleSettingUpdate(ctx, "reports", reports);
+      return;
+    }
+  });
+
   logger.info("Commands registered");
 };
 
@@ -285,6 +316,10 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
 const main = async (): Promise<void> => {
   try {
     logger.info("Initializing bot...");
+
+    // Initialize database tables
+    await initializeTables();
+
     await startBot();
   } catch (error) {
     logger.error("Failed to start bot", { error });

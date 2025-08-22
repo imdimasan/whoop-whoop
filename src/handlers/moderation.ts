@@ -1,9 +1,8 @@
 import { analyzeMessage } from "../services/openai.js";
-import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { TModerationAction } from "../interfaces/i-moderation.js";
 import { IBotContext } from "../interfaces/i-bot.js";
-import { IUserReport } from "../interfaces/i-user.js";
+import { addReport, getGroupSettings } from "../services/database.js";
 import {
   mutedUserMessage,
   bannedUserMessage,
@@ -17,8 +16,7 @@ import { processMessageForOCR } from "../helpers/ocr.js";
 // Store last moderation action timestamps to prevent spam
 const lastModerationAction: Map<number, number> = new Map();
 
-// Store user reports (targetUserId -> IUserReport)
-const userReports: Map<number, IUserReport> = new Map();
+// Note: User reports are now stored in PostgreSQL database
 
 /**
  * Auto-deletes a bot message after specified delay
@@ -276,10 +274,12 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     // Delete the message first
     await ctx.deleteMessage();
 
+    // Get group-specific mute duration
+    const groupSettings = await getGroupSettings(chat.id);
+    const muteDurationMinutes = groupSettings.muteDurationMinutes || 60;
+
     // Calculate mute duration
-    const untilDate =
-      Math.floor(Date.now() / 1000) +
-      config.moderation.muteDurationMinutes * 60;
+    const untilDate = Math.floor(Date.now() / 1000) + muteDurationMinutes * 60;
 
     // Restrict user
     await ctx.restrictChatMember(
@@ -303,7 +303,7 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     // Send notification
     const muteMsg = mutedUserMessage(
       from.first_name,
-      config.moderation.muteDurationMinutes,
+      muteDurationMinutes,
       reason || defaultReasons.policyViolation
     );
 
@@ -315,7 +315,7 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     logger.info("User muted", {
       userId: from.id,
       chatId: chat.id,
-      duration: config.moderation.muteDurationMinutes,
+      duration: muteDurationMinutes,
     });
   } catch (error) {
     logger.error("Failed to mute user", { error, userId: from.id });
@@ -393,16 +393,16 @@ const warnGroup = async (ctx: IBotContext, reason?: string): Promise<void> => {
 };
 
 /**
- * Handles user report
+ * Handles user report for a specific message
  * @example
- * const result = await handleReport(ctx, targetUserId);
+ * const result = await handleReport(ctx, targetUserId, messageId);
  */
 export const handleReport = async (
   ctx: IBotContext,
-  targetUserId: number
+  targetUserId: number,
+  targetMessageId: number
 ): Promise<{ success: boolean; message: string; shouldBan?: boolean }> => {
   const { from, chat } = ctx;
-  const MAX_REPORTS = parseFloat(process.env.MAX_REPORTS || "10");
 
   if (!from || !chat) {
     return { success: false, message: "Ошибка: недостаточно данных" };
@@ -413,47 +413,37 @@ export const handleReport = async (
     return { success: false, message: "Нельзя пожаловаться на самого себя" };
   }
 
-  const reportKey = targetUserId;
-  const now = new Date();
+  // Get group-specific settings (with fallback to default)
+  const groupSettings = await getGroupSettings(chat.id);
+  const maxReports = groupSettings.maxReports || 10;
 
-  // Get or create report record
-  let reportRecord = userReports.get(reportKey);
+  // Add report to database
+  const result = await addReport(
+    targetMessageId,
+    chat.id,
+    targetUserId,
+    from.id
+  );
 
-  if (!reportRecord) {
-    reportRecord = {
-      targetUserId,
-      chatId: chat.id,
-      reporterIds: new Set(),
-      reportCount: 0,
-      firstReport: now,
-      lastReport: now,
-    };
-    userReports.set(reportKey, reportRecord);
+  if (!result.success) {
+    return { success: false, message: "Ошибка базы данных" };
   }
 
-  // Check if user already reported this person
-  if (reportRecord.reporterIds.has(from.id)) {
-    return {
-      success: false,
-      message: "Вы уже пожаловались на этого пользователя",
-    };
+  if (result.alreadyReported) {
+    return { success: false, message: "Вы уже пожаловались на это сообщение" };
   }
 
-  // Add report
-  reportRecord.reporterIds.add(from.id);
-  reportRecord.reportCount++;
-  reportRecord.lastReport = now;
-
-  logger.info("User reported", {
+  logger.info("Message reported", {
     reporterId: from.id,
     targetUserId,
+    targetMessageId,
     chatId: chat.id,
-    reportCount: reportRecord.reportCount,
-    threshold: MAX_REPORTS,
+    reportCount: result.reportCount,
+    threshold: maxReports,
   });
 
   // Check if threshold reached
-  if (reportRecord.reportCount >= MAX_REPORTS) {
+  if (result.reportCount >= maxReports) {
     // Ban the user
     try {
       await ctx.banChatMember(targetUserId);
@@ -468,18 +458,16 @@ export const handleReport = async (
       // Auto-delete after 30 seconds
       await autoDeleteMessage(ctx, reply.message_id, 30000);
 
-      // Clear reports for this user
-      userReports.delete(reportKey);
-
       logger.info("User banned by community reports", {
         targetUserId,
+        targetMessageId,
         chatId: chat.id,
-        reportCount: reportRecord.reportCount,
+        reportCount: result.reportCount,
       });
 
       return {
         success: true,
-        message: `Пользователь заблокирован (${reportRecord.reportCount}/${MAX_REPORTS} жалоб)`,
+        message: `Пользователь заблокирован (${result.reportCount}/${maxReports} жалоб)`,
         shouldBan: true,
       };
     } catch (error) {
@@ -490,7 +478,7 @@ export const handleReport = async (
 
   return {
     success: true,
-    message: `Жалоба принята (${reportRecord.reportCount}/${MAX_REPORTS})`,
+    message: `Жалоба принята (${result.reportCount}/${maxReports})`,
   };
 };
 
