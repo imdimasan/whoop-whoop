@@ -18,6 +18,11 @@ import {
  * startBot().catch(console.error);
  */
 const startBot = async (): Promise<void> => {
+  const { botToken } = config?.telegram || {};
+
+  if (!botToken) {
+    throw new Error("BOT_TOKEN is required in environment variables");
+  }
   // Create bot instance
   const bot = new Bot<IBotContext>(config.telegram.botToken);
 
@@ -78,16 +83,17 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
   // Start command
   bot.command("start", async (ctx) => {
     const { chat } = ctx;
+    const { botUsername } = config?.telegram || {};
 
-    if (!chat) {
+    if (!chat || !botUsername) {
       return;
     }
 
     if (chat.type === "private") {
-      const welcomeMsg = welcomePrivateMessage(config.telegram.botUsername);
+      const welcomeMsg = welcomePrivateMessage(botUsername);
       await ctx.reply(welcomeMsg, { parse_mode: "HTML" });
     } else {
-      const groupMsg = welcomeGroupMessage(config.telegram.botUsername);
+      const groupMsg = welcomeGroupMessage(botUsername);
       await ctx.reply(groupMsg, { parse_mode: "HTML" });
     }
   });

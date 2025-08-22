@@ -12,6 +12,7 @@ import {
   mildViolationWarning,
   communityBannedUserMessage,
 } from "../config/messages.js";
+import { processMessageForOCR } from "../helpers/ocr.js";
 
 // Store last moderation action timestamps to prevent spam
 const lastModerationAction: Map<number, number> = new Map();
@@ -78,7 +79,30 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
     // Get message text
     const text = message?.text || message?.caption || "";
 
+    // OCR path: single photo + no text
     if (!text) {
+      const ocrText = await processMessageForOCR(ctx);
+
+      if (ocrText && ocrText.length >= 3) {
+        // Re-run moderation on OCR text under same user
+        const moderationResult = await analyzeMessage(ocrText, from.id);
+
+        logger.info("OCR message analyzed", {
+          userId: from.id,
+          chatId: ctx.chat?.id,
+          shouldModerate: moderationResult.shouldModerate,
+          action: moderationResult.suggestedAction,
+        });
+
+        if (moderationResult.shouldModerate) {
+          await takeAction(
+            ctx,
+            moderationResult.suggestedAction,
+            moderationResult.reason
+          );
+        }
+      }
+
       return;
     }
 

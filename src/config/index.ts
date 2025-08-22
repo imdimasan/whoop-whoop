@@ -26,8 +26,8 @@ export const getConfig = (): IConfig => {
 
   return {
     telegram: {
-      botToken: BOT_TOKEN,
-      botUsername: BOT_USERNAME || "whoop_whoop_bot",
+      botToken: BOT_TOKEN || "",
+      botUsername: BOT_USERNAME || "",
     },
     openai: {
       apiKey: OPENAI_API_KEY,

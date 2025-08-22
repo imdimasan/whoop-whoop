@@ -42,8 +42,8 @@ const setup = async () => {
 
   // Get bot username
   const botUsername =
-    (await question("Bot Username (default: whoop_whoop_bot): ")) ||
-    "whoop_whoop_bot";
+    (await question("Bot Username (default: yourbotname_bot): ")) ||
+    "yourbotname_bot";
 
   // Get moderation settings
   const maxWarnings =

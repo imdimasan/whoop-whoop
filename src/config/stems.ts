@@ -87,6 +87,8 @@ const DRUG_STEMS_CONTEXT = [
   "продукт",
   "материал",
   "stuff",
+  "клады",
+  "клад",
 ] as const;
 
 /**
@@ -135,6 +137,10 @@ const DEAL_STEMS = [
   "pm",
   "telegram",
   "телеграм",
+  "meek900",
+  "MEEK900",
+  "тг поиске",
+  "тг поиск",
 ];
 
 const RX_DRUG_STRONG = DRUG_STEMS_STRONG.map((s) => stemToRegex(s));

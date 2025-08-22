@@ -71,7 +71,7 @@ export const ticketSaleWarningMessage = (
 /**
  * Bot welcome message for private chats
  * @example
- * const msg = welcomePrivateMessage('whoop_whoop_bot');
+ * const msg = welcomePrivateMessage('yourbotname_bot');
  */
 export const welcomePrivateMessage = (botUsername: string): string => {
   return (
@@ -82,7 +82,7 @@ export const welcomePrivateMessage = (botUsername: string): string => {
 /**
  * Bot active message for groups
  * @example
- * const msg = welcomeGroupMessage('whoop_whoop_bot');
+ * const msg = welcomeGroupMessage('yourbotname_bot');
  */
 export const welcomeGroupMessage = (botUsername: string): string => {
   return (

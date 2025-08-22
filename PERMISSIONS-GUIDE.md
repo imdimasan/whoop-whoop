@@ -26,7 +26,7 @@
 2. **Tap the group name** at the top of the screen
 3. **Scroll down and tap "Administrators"**
 4. **Tap "Add Administrator"**
-5. **Search for your bot**: `@whoop_whoop_bot`
+5. **Search for your bot**: `@yourbotname_bot`
 6. **Tap on your bot** when it appears in the search results
 
 ### Step 2: Configure Permissions

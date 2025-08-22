@@ -33,3 +33,6 @@ debug/
 # Test coverage
 coverage/
 .nyc_output/ 
+
+# OCR
+*.traineddata

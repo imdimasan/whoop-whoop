@@ -37,7 +37,7 @@ The setup wizard will ask for:
 
 - **Telegram Bot Token**: Get from @BotFather on Telegram
 - **OpenAI API Key**: Get from https://platform.openai.com/api-keys
-- **Bot Username**: Your bot's username (default: whoop_whoop_bot)
+- **Bot Username**: Your bot's username (default: yourbotname_bot)
 - **Max Warnings**: Number of warnings before escalation (default: 3)
 - **Mute Duration**: How long to mute users in minutes (default: 5)
 
