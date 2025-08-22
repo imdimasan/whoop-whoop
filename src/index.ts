@@ -1,11 +1,7 @@
 import { Bot, GrammyError, HttpError } from "grammy";
 import { config } from "./config/index.js";
 import { logger } from "./utils/logger.js";
-import {
-  handleMessage,
-  getWarningCount,
-  clearWarnings,
-} from "./handlers/moderation.js";
+import { handleMessage } from "./handlers/moderation.js";
 import { IBotContext } from "./interfaces/i-bot.js";
 import {
   welcomePrivateMessage,
@@ -13,8 +9,6 @@ import {
   helpMessage,
   statsMessage,
   settingsMessage,
-  userWarningsMessage,
-  warningsClearedMessage,
   errorMessages,
 } from "./config/messages.js";
 
@@ -100,8 +94,17 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
 
   // Help command
   bot.command("help", async (ctx) => {
-    const helpMsg = helpMessage(config.moderation.maxWarnings);
-    await ctx.reply(helpMsg, { parse_mode: "HTML" });
+    const helpMsg = helpMessage();
+    const reply = await ctx.reply(helpMsg, { parse_mode: "HTML" });
+
+    // Auto-delete help message after 60 seconds
+    setTimeout(async () => {
+      try {
+        await ctx.api.deleteMessage(ctx.chat?.id || 0, reply.message_id);
+      } catch (error) {
+        // Ignore deletion errors
+      }
+    }, 60000);
   });
 
   // Stats command
@@ -134,7 +137,16 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       canRestrict,
       missingPerms
     );
-    await ctx.reply(statsMsg, { parse_mode: "HTML" });
+    const reply = await ctx.reply(statsMsg, { parse_mode: "HTML" });
+
+    // Auto-delete stats message after 45 seconds
+    setTimeout(async () => {
+      try {
+        await ctx.api.deleteMessage(ctx.chat?.id || 0, reply.message_id);
+      } catch (error) {
+        // Ignore deletion errors
+      }
+    }, 45000);
   });
 
   // Settings command (admin only)
@@ -161,80 +173,21 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     }
 
     const settingsMsg = settingsMessage(
-      config.moderation.maxWarnings,
       config.moderation.muteDurationMinutes,
       Math.round(config.moderation.thresholds.ban * 100),
       Math.round(config.moderation.thresholds.mute * 100),
       Math.round(config.moderation.thresholds.delete * 100)
     );
-    await ctx.reply(settingsMsg, { parse_mode: "HTML" });
-  });
+    const reply = await ctx.reply(settingsMsg, { parse_mode: "HTML" });
 
-  // Warnings command
-  bot.command("warnings", async (ctx) => {
-    const { message, chat } = ctx;
-
-    if (!message || !chat) {
-      return;
-    }
-
-    if (chat.type === "private") {
-      await ctx.reply(errorMessages.groupOnly);
-      return;
-    }
-
-    // Get mentioned user or reply target
-    const targetUser = message.reply_to_message?.from;
-
-    if (!targetUser) {
-      await ctx.reply(errorMessages.replyRequired);
-      return;
-    }
-
-    const warningCount = getWarningCount(targetUser.id);
-    const warningsMsg = userWarningsMessage(
-      targetUser.first_name,
-      warningCount,
-      config.moderation.maxWarnings
-    );
-    await ctx.reply(warningsMsg, { parse_mode: "HTML" });
-  });
-
-  // Clear warnings command (admin only)
-  bot.command("clearwarnings", async (ctx) => {
-    const { from, message, chat } = ctx;
-
-    if (!from || !message || !chat) {
-      return;
-    }
-
-    if (chat.type === "private") {
-      await ctx.reply(errorMessages.groupOnly);
-      return;
-    }
-
-    // Check if user is admin
-    const member = await ctx.getChatMember(from.id);
-    const isAdmin =
-      member.status === "administrator" || member.status === "creator";
-
-    if (!isAdmin) {
-      await ctx.reply(errorMessages.adminOnly);
-      return;
-    }
-
-    // Get mentioned user or reply target
-    const targetUser = message.reply_to_message?.from;
-
-    if (!targetUser) {
-      await ctx.reply(errorMessages.replyRequiredClear);
-      return;
-    }
-
-    clearWarnings(targetUser.id);
-
-    const clearedMsg = warningsClearedMessage(targetUser.first_name);
-    await ctx.reply(clearedMsg, { parse_mode: "HTML" });
+    // Auto-delete settings message after 60 seconds
+    setTimeout(async () => {
+      try {
+        await ctx.api.deleteMessage(ctx.chat?.id || 0, reply.message_id);
+      } catch (error) {
+        // Ignore deletion errors
+      }
+    }, 60000);
   });
 
   logger.info("Commands registered");

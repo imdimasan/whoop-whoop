@@ -9,6 +9,8 @@ import {
   getPromptForContent,
   getThresholdsForContent,
   determineContentType,
+  MODERATION_CATEGORY_TRANSLATIONS,
+  translateReason,
 } from "../config/prompts.js";
 
 // Initialize OpenAI client
@@ -62,9 +64,19 @@ export const analyzeMessage = async (
 
       const maxScore = Math.max(...Object.values(category_scores));
 
+      // Translate categories to Russian
+      const translatedCategories = flaggedCategories
+        .map(
+          (category) =>
+            MODERATION_CATEGORY_TRANSLATIONS[
+              category as keyof typeof MODERATION_CATEGORY_TRANSLATIONS
+            ] || category
+        )
+        .join(", ");
+
       return {
         shouldModerate: true,
-        reason: `Content violates: ${flaggedCategories.join(", ")}`,
+        reason: `Нарушение контента: ${translatedCategories}`,
         severity: determineSeverity(maxScore),
         suggestedAction: determinActionByContentType(maxScore, "general"),
         confidence: maxScore,
@@ -174,7 +186,7 @@ const performCustomAnalysis = async (
 
     const finalResult = {
       shouldModerate,
-      reason: analysis.reason,
+      reason: translateReason(analysis.reason),
       severity: analysis.severity || "low",
       suggestedAction,
       confidence: analysis.confidence || 0,
@@ -214,7 +226,9 @@ const handleDrugAnalysis = (analysis: any): IModerationResult => {
   if (isDrugRelated) {
     const result = {
       shouldModerate: true,
-      reason: analysis.reason || "Drug-related content detected",
+      reason:
+        translateReason(analysis.reason) ||
+        "Обнаружен контент, связанный с наркотиками",
       severity: "high" as const,
       suggestedAction: "ban_user" as const,
       confidence: analysis.confidence || 0.9,
@@ -255,7 +269,9 @@ const handleTicketAnalysis = (analysis: any): IModerationResult => {
     // For tickets, only warn the group - never ban/mute users
     const result = {
       shouldModerate: true,
-      reason: analysis.reason || "Ticket sale detected - possible fraud risk",
+      reason:
+        translateReason(analysis.reason) ||
+        "Обнаружена продажа билетов - возможный риск мошенничества",
       severity: "low" as const,
       suggestedAction: "warn_group" as TModerationAction,
       confidence,

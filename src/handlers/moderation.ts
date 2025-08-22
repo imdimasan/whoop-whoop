@@ -2,21 +2,36 @@ import { analyzeMessage } from "../services/openai.js";
 import { config } from "../config/index.js";
 import { logger } from "../utils/logger.js";
 import { TModerationAction } from "../interfaces/i-moderation.js";
-import { IUserWarning } from "../interfaces/i-user.js";
 import { IBotContext } from "../interfaces/i-bot.js";
 import {
-  warningMessage,
   mutedUserMessage,
   bannedUserMessage,
   defaultReasons,
   ticketSaleWarningMessage,
+  mildViolationWarning,
 } from "../config/messages.js";
-
-// Store warnings in memory (could be moved to database later)
-const warnings: Map<number, IUserWarning> = new Map();
 
 // Store last moderation action timestamps to prevent spam
 const lastModerationAction: Map<number, number> = new Map();
+
+/**
+ * Auto-deletes a bot message after specified delay
+ * @example
+ * await autoDeleteMessage(ctx, messageId, 30000); // Delete after 30 seconds
+ */
+const autoDeleteMessage = async (
+  ctx: IBotContext,
+  messageId: number,
+  delayMs: number = 30000
+): Promise<void> => {
+  setTimeout(async () => {
+    try {
+      await ctx.api.deleteMessage(ctx.chat?.id || 0, messageId);
+    } catch (error) {
+      logger.debug("Failed to auto-delete message", { error, messageId });
+    }
+  }, delayMs);
+};
 
 /**
  * Handles incoming messages for moderation
@@ -172,7 +187,7 @@ const takeAction = async (
 };
 
 /**
- * Deletes a message and warns the user
+ * Deletes a message and shows warning (auto-deletes)
  * @example
  * await deleteMessage(ctx, 'Inappropriate content');
  */
@@ -191,33 +206,22 @@ const deleteMessage = async (
     // Delete the message
     await ctx.deleteMessage();
 
-    // Track warning
-    await addWarning(
-      from.id,
-      ctx.chat?.id || 0,
-      reason || defaultReasons.contentViolation
-    );
-
-    // Send warning message
-    const warningCount = warnings.get(from.id)?.count || 1;
-
-    const warningMsg = warningMessage(
+    // Send mild warning message
+    const warningMsg = mildViolationWarning(
       from.first_name,
-      warningCount,
-      config.moderation.maxWarnings,
       reason || defaultReasons.contentViolation
     );
 
-    const warningReply = await ctx.reply(warningMsg, { parse_mode: "HTML" });
+    const reply = await ctx.reply(warningMsg, { parse_mode: "HTML" });
 
-    // Delete warning message after 10 seconds
-    setTimeout(async () => {
-      try {
-        await ctx.api.deleteMessage(ctx.chat?.id || 0, warningReply.message_id);
-      } catch (error) {
-        logger.error("Failed to delete warning message", { error });
-      }
-    }, 10000);
+    // Auto-delete the warning message after 15 seconds
+    await autoDeleteMessage(ctx, reply.message_id, 15000);
+
+    logger.info("Message deleted with warning", {
+      userId: from.id,
+      chatId: ctx.chat?.id,
+      reason: reason || defaultReasons.contentViolation,
+    });
   } catch (error) {
     logger.error("Failed to delete message", {
       error,
@@ -274,7 +278,10 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
       reason || defaultReasons.policyViolation
     );
 
-    await ctx.reply(muteMsg, { parse_mode: "HTML" });
+    const reply = await ctx.reply(muteMsg, { parse_mode: "HTML" });
+
+    // Auto-delete the mute notification after 30 seconds
+    await autoDeleteMessage(ctx, reply.message_id, 30000);
 
     logger.info("User muted", {
       userId: from.id,
@@ -312,10 +319,10 @@ const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
       reason || defaultReasons.severeViolation
     );
 
-    await ctx.reply(banMsg, { parse_mode: "HTML" });
+    const reply = await ctx.reply(banMsg, { parse_mode: "HTML" });
 
-    // Clear warnings
-    warnings.delete(from.id);
+    // Auto-delete the ban notification after 30 seconds
+    await autoDeleteMessage(ctx, reply.message_id, 30000);
 
     logger.info("User banned", { userId: from.id, chatId: chat.id, reason });
   } catch (error) {
@@ -356,64 +363,7 @@ const warnGroup = async (ctx: IBotContext, reason?: string): Promise<void> => {
   }
 };
 
-/**
- * Adds a warning for a user
- * @example
- * await addWarning(123, 456, 'Spam');
- */
-const addWarning = async (
-  userId: number,
-  chatId: number,
-  reason: string
-): Promise<void> => {
-  const existing = warnings.get(userId);
-
-  if (existing) {
-    existing.count++;
-    existing.lastWarning = new Date();
-    existing.reasons.push(reason);
-
-    // Check if max warnings reached
-    if (existing.count >= config.moderation.maxWarnings) {
-      // Reset warnings and escalate to mute
-      warnings.delete(userId);
-      logger.info("Max warnings reached, escalating", {
-        userId,
-        warnings: existing.count,
-      });
-    }
-  } else {
-    warnings.set(userId, {
-      userId,
-      chatId,
-      count: 1,
-      lastWarning: new Date(),
-      reasons: [reason],
-    });
-  }
-};
-
-/**
- * Gets warning count for a user
- * @example
- * const count = getWarningCount(123);
- */
-export const getWarningCount = (userId: number): number => {
-  return warnings.get(userId)?.count || 0;
-};
-
-/**
- * Clears warnings for a user
- * @example
- * clearWarnings(123);
- */
-export const clearWarnings = (userId: number): void => {
-  warnings.delete(userId);
-};
-
 // For backward compatibility, export the main functions as default
 export default {
   handleMessage,
-  getWarningCount,
-  clearWarnings,
 };

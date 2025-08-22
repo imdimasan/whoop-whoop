@@ -91,22 +91,23 @@ export const near = (
   const hitsA: number[] = [];
   a.forEach((rx) => {
     let m: RegExpExecArray | null;
-    const r = new RegExp(
+    const regexp = new RegExp(
       rx,
       rx.flags.includes("g") ? rx.flags : rx.flags + "g"
     );
-    while ((m = r.exec(text))) hitsA.push(m.index);
+    while ((m = regexp.exec(text))) hitsA.push(m.index);
   });
   if (!hitsA.length) return false;
 
   const hitsB: number[] = [];
+
   b.forEach((rx) => {
     let m: RegExpExecArray | null;
-    const r = new RegExp(
+    const regexp = new RegExp(
       rx,
       rx.flags.includes("g") ? rx.flags : rx.flags + "g"
     );
-    while ((m = r.exec(text))) hitsB.push(m.index);
+    while ((m = regexp.exec(text))) hitsB.push(m.index);
   });
 
   return hitsA.some((i) => hitsB.some((j) => Math.abs(i - j) <= window));
