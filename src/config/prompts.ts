@@ -36,7 +36,7 @@ EXAMPLES NOT TO MODERATE:
 - ANY language, swearing, arguments, conversations
 - Regular commerce and sales
 
-IMPORTANT: Only flag job offers that seem designed to recruit drug couriers through unusually high pay for simple tasks. Ignore ALL other content including any language issues. Reason should be in Russian.
+IMPORTANT: Only flag job offers that seem designed to recruit drug couriers through unusually high pay for simple tasks. Ignore ALL other content including any language issues. Reason should be in Russian. Include 1–2 evidence_phrases verbatim from the message.
 
 Return JSON: {"shouldModerate": boolean, "reason": string|null, "severity": "high", "confidence": number(0.7..0.9)}`;
 
@@ -46,19 +46,15 @@ Return JSON: {"shouldModerate": boolean, "reason": string|null, "severity": "hig
 export const TICKET_DETECTION_PROMPT = `Detect ticket sales vs ticket buying requests. 
 
 ONLY FLAG ticket SALES (warn the group about potential fraud):
-- "Продаю билеты на концерт"
+- "Продаю/продам билеты", "перепродам", "реализую"
 - "Есть лишний билет, продам"
-- "Билеты на футбол, цена договорная"
-- Messages offering tickets for sale
+- "Билеты на футбол/концерт, цена договорная"
 
-DO NOT FLAG ticket BUYING requests (these are allowed):
-- "Куплю билет на концерт"
-- "Ищу билеты на матч"
-- "Кто продает билеты?"
-- "Нужен билет на спектакль"
-- Messages looking to purchase tickets
+DO NOT FLAG ticket BUYING requests (allowed):
+- "Куплю", "ищу", "нужен", "приобрету" билет(ы)
+- Questions like "Кто продает билеты?" (this is a buying intent)
 
-Only moderate when someone is SELLING tickets, not when they want to BUY tickets. Reason should be in Russian.
+If both BUY and SELL appear, classify as SELL and explain why. Reason should be in Russian.
 
 Return JSON: {"isTicket": true|false, "confidence": number, "reason": string|null}`;
 

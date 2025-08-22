@@ -19,9 +19,6 @@ const lastModerationAction: Map<number, number> = new Map();
 // Store user reports (targetUserId -> IUserReport)
 const userReports: Map<number, IUserReport> = new Map();
 
-// Report threshold - number of reports needed to ban a user
-const REPORT_THRESHOLD = 1;
-
 /**
  * Auto-deletes a bot message after specified delay
  * @example
@@ -381,6 +378,7 @@ export const handleReport = async (
   targetUserId: number
 ): Promise<{ success: boolean; message: string; shouldBan?: boolean }> => {
   const { from, chat } = ctx;
+  const MAX_REPORTS = parseFloat(process.env.MAX_REPORTS || "10");
 
   if (!from || !chat) {
     return { success: false, message: "Ошибка: недостаточно данных" };
@@ -427,11 +425,11 @@ export const handleReport = async (
     targetUserId,
     chatId: chat.id,
     reportCount: reportRecord.reportCount,
-    threshold: REPORT_THRESHOLD,
+    threshold: MAX_REPORTS,
   });
 
   // Check if threshold reached
-  if (reportRecord.reportCount >= REPORT_THRESHOLD) {
+  if (reportRecord.reportCount >= MAX_REPORTS) {
     // Ban the user
     try {
       await ctx.banChatMember(targetUserId);
@@ -457,7 +455,7 @@ export const handleReport = async (
 
       return {
         success: true,
-        message: `Пользователь заблокирован (${reportRecord.reportCount}/${REPORT_THRESHOLD} жалоб)`,
+        message: `Пользователь заблокирован (${reportRecord.reportCount}/${MAX_REPORTS} жалоб)`,
         shouldBan: true,
       };
     } catch (error) {
@@ -468,7 +466,7 @@ export const handleReport = async (
 
   return {
     success: true,
-    message: `Жалоба принята (${reportRecord.reportCount}/${REPORT_THRESHOLD})`,
+    message: `Жалоба принята (${reportRecord.reportCount}/${MAX_REPORTS})`,
   };
 };
 

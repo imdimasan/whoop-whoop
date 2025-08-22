@@ -119,7 +119,7 @@ const performCustomAnalysis = async (
     });
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
@@ -130,8 +130,9 @@ const performCustomAnalysis = async (
           content: message,
         },
       ],
-      temperature: 0.1,
+      temperature: 0,
       max_tokens: 2000,
+      response_format: { type: "json_object" },
     });
 
     const response = completion.choices[0]?.message?.content;
@@ -159,6 +160,9 @@ const performCustomAnalysis = async (
         confidence: analysis.confidence,
         ...(analysis.scamType && { scamType: analysis.scamType }),
         ...(analysis.substances && { substances: analysis.substances }),
+        ...(analysis.evidence_phrases && {
+          evidence: analysis.evidence_phrases,
+        }),
       },
     });
 

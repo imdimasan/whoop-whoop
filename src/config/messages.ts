@@ -63,7 +63,7 @@ export const ticketSaleWarningMessage = (
   aiExplanation: string
 ): string =>
   `${BOT_TITLE}\n` +
-  `⚠️ <b>Высокий риск мошенничества от ${firstName}</b> ⚠️\n\n` +
+  `⚠️ <b>Сообщение ${firstName} имеет высокий риск мошенничества</b> ⚠️\n\n` +
   `<b>Причина:</b>\n${aiExplanation}\n\n` +
   `<b>Считаете это сообщение мошенническим?:</b>\n` +
   `• Ответьте на сообщение пользователя командой /report.\n`;
