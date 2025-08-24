@@ -2,6 +2,7 @@ import { Bot, GrammyError, HttpError } from "grammy";
 import { config } from "./config/index.js";
 import { logger } from "./utils/logger.js";
 import { handleMessage, handleReport } from "./handlers/moderation.js";
+import { getModerationStats } from "./services/database.js";
 import { IBotContext } from "./interfaces/i-bot.js";
 import { initializeTables } from "./services/database.js";
 import {
@@ -143,11 +144,15 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     if (!canDelete) missingPerms.push("Delete messages");
     if (!canRestrict) missingPerms.push("Restrict members");
 
+    // Get moderation statistics from database
+    const moderationStats = await getModerationStats(chat.id);
+
     const statsMsg = statsMessage(
       chat.title || "Unknown",
       canDelete,
       canRestrict,
-      missingPerms
+      missingPerms,
+      moderationStats
     );
     const reply = await ctx.reply(statsMsg, { parse_mode: "HTML" });
 
@@ -303,6 +308,17 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
     if (data.startsWith("set_reports_")) {
       const reports = parseInt(data.replace("set_reports_", ""));
       await handleSettingUpdate(ctx, "reports", reports);
+      return;
+    }
+
+    // Delete messages callbacks
+    if (data === "set_delete_true") {
+      await handleSettingUpdate(ctx, "delete", true);
+      return;
+    }
+
+    if (data === "set_delete_false") {
+      await handleSettingUpdate(ctx, "delete", false);
       return;
     }
   });

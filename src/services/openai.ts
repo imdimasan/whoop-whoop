@@ -163,12 +163,17 @@ const performCustomAnalysis = async (
         ...(analysis.evidence_phrases && {
           evidence: analysis.evidence_phrases,
         }),
+        ...(analysis.isGambling && { isGambling: analysis.isGambling }),
       },
     });
 
     // Handle different response formats based on content type
     if (contentType === "drugs") {
       return handleDrugAnalysis(analysis);
+    }
+
+    if (contentType === "gambling") {
+      return handleGamblingAnalysis(analysis);
     }
 
     if (contentType === "tickets") {
@@ -260,6 +265,47 @@ const handleDrugAnalysis = (analysis: any): IModerationResult => {
 };
 
 /**
+ * Handles gambling-related content analysis
+ * @example
+ * const result = handleGamblingAnalysis(analysis);
+ */
+const handleGamblingAnalysis = (analysis: any): IModerationResult => {
+  const isGambling = analysis.isGambling || false;
+
+  if (isGambling) {
+    const confidence = analysis.confidence || 0.8;
+
+    const result = {
+      shouldModerate: true,
+      reason:
+        translateReason(analysis.reason) ||
+        "Обнаружен спам казино/азартных игр",
+      severity: confidence >= 0.7 ? ("high" as const) : ("medium" as const),
+      suggestedAction: determinActionByContentType(confidence, "gambling"),
+      confidence,
+    };
+
+    logger.info("Gambling content detected", {
+      result: {
+        shouldModerate: result.shouldModerate,
+        action: result.suggestedAction,
+        reason: result.reason,
+        confidence: result.confidence,
+      },
+    });
+
+    return result;
+  }
+
+  return {
+    shouldModerate: false,
+    severity: "low",
+    suggestedAction: "none",
+    confidence: analysis.confidence || 0.1,
+  };
+};
+
+/**
  * Handles ticket-related content analysis
  * @example
  * const result = handleTicketAnalysis(analysis);
@@ -308,7 +354,7 @@ const handleTicketAnalysis = (analysis: any): IModerationResult => {
  */
 const determinActionByContentType = (
   score: number,
-  contentType: "drugs" | "tickets" | "general"
+  contentType: "drugs" | "tickets" | "general" | "gambling"
 ): TModerationAction => {
   const thresholds = getThresholdsForContent(contentType);
 

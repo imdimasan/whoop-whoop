@@ -66,6 +66,31 @@ export const DRUG_DETECTION_PROMPT = `Detect drug sales/abuse. Flag any: drug sa
 Return JSON: {"isDrugRelated": true|false, "confidence": number, "reason": string|null, "substances": []}`;
 
 /**
+ * Gambling detection: immediate ban
+ */
+export const GAMBLING_DETECTION_PROMPT = `Detect gambling/casino spam. Flag any gambling promotion, casino advertising, betting spam.
+
+GAMBLING INDICATORS:
+- Casino/gambling site promotion
+- Free spins, bonuses, jackpots
+- "поднял деньги", "нашел топовый каз", "фри спины"
+- Gambling wins bragging: "выиграл", "поднял", "слил", "занос"
+- Casino screenshots, slot machine images
+- Betting/gambling referral links
+- "Топовое казино", "проверенное казино"
+- Large money amounts with gambling context
+
+EXAMPLES TO FLAG:
+- "поднял 50к в казино"
+- "нашел топовый каз, регай"
+- "фри спины за регистрацию"
+- Screenshots of slot machines, roulette, poker
+- "выиграл джекпот"
+- Any casino/gambling promotional content
+
+Return JSON: {"isGambling": true|false, "confidence": number, "reason": string|null}`;
+
+/**
  * Translation map for OpenAI moderation categories to Russian
  */
 export const MODERATION_CATEGORY_TRANSLATIONS = {
@@ -133,6 +158,22 @@ export const DETECTION_PATTERNS = {
   general: [],
   tickets: ["билет", "билета", "билеты", "билетов"],
   drugs: [],
+  gambling: [
+    "казино",
+    "каз",
+    "фри спины",
+    "поднял",
+    "выиграл",
+    "джекпот",
+    "слот",
+    "рулетка",
+    "ставки",
+    "бонус",
+    "занос",
+    "слил",
+    "топовый каз",
+    "регай",
+  ],
 };
 
 /**
@@ -142,6 +183,7 @@ export const CONFIDENCE_THRESHOLDS = {
   general: { ban: 0.85, mute: 0.75, delete: 0.7 }, // For suspicious job offers only
   tickets: { ban: 1.0, mute: 1.0, delete: 1.0 }, // Never ban/mute tickets
   drugs: { ban: 0.5, mute: 0.3, delete: 0.1 }, // Aggressive for drugs
+  gambling: { ban: 0.6, mute: 0.4, delete: 0.2 }, // Aggressive for gambling spam
 };
 
 /**
@@ -155,6 +197,15 @@ export const getPromptForContent = (message: string): string => {
 
   if (hasDrugKeywords) {
     return DRUG_DETECTION_PROMPT;
+  }
+
+  // Check gambling (second priority)
+  const hasGamblingKeywords = DETECTION_PATTERNS.gambling.some((keyword) =>
+    lowerMessage.includes(keyword.toLowerCase())
+  );
+
+  if (hasGamblingKeywords) {
+    return GAMBLING_DETECTION_PROMPT;
   }
 
   // Check tickets
@@ -174,7 +225,7 @@ export const getPromptForContent = (message: string): string => {
  * Get thresholds for content type
  */
 export const getThresholdsForContent = (
-  contentType: "general" | "tickets" | "drugs"
+  contentType: "general" | "tickets" | "drugs" | "gambling"
 ) => {
   return CONFIDENCE_THRESHOLDS[contentType];
 };
@@ -184,11 +235,19 @@ export const getThresholdsForContent = (
  */
 export const determineContentType = (
   message: string
-): "general" | "tickets" | "drugs" => {
+): "general" | "tickets" | "drugs" | "gambling" => {
   const lowerMessage = message.toLowerCase();
 
   if (hasDrugKeywordsSmart(lowerMessage)) {
     return "drugs";
+  }
+
+  if (
+    DETECTION_PATTERNS.gambling.some((keyword) =>
+      lowerMessage.includes(keyword.toLowerCase())
+    )
+  ) {
+    return "gambling";
   }
 
   if (

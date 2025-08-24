@@ -19,6 +19,8 @@ export const showSettingsMenu = async (ctx: IBotContext): Promise<void> => {
   const currentSettings = await getGroupSettings(chat.id);
   const currentMuteDuration = currentSettings.muteDurationMinutes || 60;
   const currentMaxReports = currentSettings.maxReports || 10;
+  const deleteReportedMessages =
+    currentSettings.deleteReportedMessages !== false;
 
   const keyboard = new InlineKeyboard()
     .text(`🔇 Минуты мута (${currentMuteDuration})`, "settings_mute_duration")
@@ -28,6 +30,11 @@ export const showSettingsMenu = async (ctx: IBotContext): Promise<void> => {
       "settings_max_reports"
     )
     .row()
+    .text(
+      `🗑 Удалять сообщения (${deleteReportedMessages ? "✅" : "❌"})`,
+      "settings_delete_messages"
+    )
+    .row()
     .text("❌ Закрыть", "settings_close");
 
   const message = `⚙️ <b>Настройки группы</b>
@@ -35,6 +42,9 @@ export const showSettingsMenu = async (ctx: IBotContext): Promise<void> => {
 <b>Текущие настройки:</b>
 🔇 Длительность мута: <code>${currentMuteDuration}</code> минут
 📊 Максимум жалоб на сообщение: <code>${currentMaxReports}</code>
+🗑 Удалять сообщения при бане: <code>${
+    deleteReportedMessages ? "Да" : "Нет"
+  }</code>
 
 Выберите параметр для изменения:`;
 
@@ -85,6 +95,10 @@ export const handleSettingsCallback = async (
 
       case "settings_max_reports":
         await handleMaxReportsSetting(ctx);
+        break;
+
+      case "settings_delete_messages":
+        await handleDeleteMessagesSetting(ctx);
         break;
 
       case "settings_close":
@@ -159,6 +173,27 @@ const handleMaxReportsSetting = async (ctx: IBotContext): Promise<void> => {
 };
 
 /**
+ * Handles delete messages setting toggle
+ * @example
+ * await handleDeleteMessagesSetting(ctx);
+ */
+const handleDeleteMessagesSetting = async (ctx: IBotContext): Promise<void> => {
+  await ctx.answerCallbackQuery();
+  await ctx.editMessageText(
+    "🗑 <b>Удаление сообщений при бане</b>\n\nВыберите поведение при блокировке пользователя по жалобам:",
+    {
+      parse_mode: "HTML",
+      reply_markup: new InlineKeyboard()
+        .text("✅ Удалять сообщения", "set_delete_true")
+        .row()
+        .text("❌ Не удалять сообщения", "set_delete_false")
+        .row()
+        .text("⬅️ Назад", "settings_back"),
+    }
+  );
+};
+
+/**
  * Handles setting value updates
  * @example
  * await handleSettingUpdate(ctx, 'mute', 60);
@@ -166,7 +201,7 @@ const handleMaxReportsSetting = async (ctx: IBotContext): Promise<void> => {
 export const handleSettingUpdate = async (
   ctx: IBotContext,
   type: string,
-  value: number
+  value: number | boolean
 ): Promise<void> => {
   const { chat } = ctx;
 
@@ -182,11 +217,16 @@ export const handleSettingUpdate = async (
     let successMessage = "";
 
     if (type === "mute") {
-      newSettings.muteDurationMinutes = value;
+      newSettings.muteDurationMinutes = value as number;
       successMessage = `✅ Настройка обновлена!\n\nТеперь пользователи будут заблокированы на <b>${value}</b> минут.`;
     } else if (type === "reports") {
-      newSettings.maxReports = value;
+      newSettings.maxReports = value as number;
       successMessage = `✅ Настройка обновлена!\n\nТеперь пользователь будет заблокирован после <b>${value}</b> жалоб на сообщение.`;
+    } else if (type === "delete") {
+      newSettings.deleteReportedMessages = value as boolean;
+      successMessage = `✅ Настройка обновлена!\n\nСообщения ${
+        value ? "будут" : "не будут"
+      } удаляться при блокировке пользователя по жалобам.`;
     }
 
     const success = await updateGroupSettings(chat.id, newSettings);
@@ -230,6 +270,8 @@ export const handleSettingsBack = async (ctx: IBotContext): Promise<void> => {
   const currentSettings = await getGroupSettings(chat.id);
   const currentMuteDuration = currentSettings.muteDurationMinutes || 60;
   const currentMaxReports = currentSettings.maxReports || 10;
+  const deleteReportedMessages =
+    currentSettings.deleteReportedMessages !== false;
 
   const keyboard = new InlineKeyboard()
     .text(`🔇 Минуты мута (${currentMuteDuration})`, "settings_mute_duration")
@@ -239,6 +281,11 @@ export const handleSettingsBack = async (ctx: IBotContext): Promise<void> => {
       "settings_max_reports"
     )
     .row()
+    .text(
+      `🗑 Удалять сообщения (${deleteReportedMessages ? "✅" : "❌"})`,
+      "settings_delete_messages"
+    )
+    .row()
     .text("❌ Закрыть", "settings_close");
 
   const message = `⚙️ <b>Настройки группы</b>
@@ -246,6 +293,9 @@ export const handleSettingsBack = async (ctx: IBotContext): Promise<void> => {
 <b>Текущие настройки:</b>
 🔇 Длительность мута: <code>${currentMuteDuration}</code> минут
 📊 Максимум жалоб на сообщение: <code>${currentMaxReports}</code>
+🗑 Удалять сообщения при бане: <code>${
+    deleteReportedMessages ? "Да" : "Нет"
+  }</code>
 
 Выберите параметр для изменения:`;
 

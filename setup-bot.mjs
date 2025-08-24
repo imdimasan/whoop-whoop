@@ -52,10 +52,6 @@ const botConfigs = {
     description:
       "Whoop Whoop - модератор для чатов: проверка сообщений и изображений.\n\n Мои функции:\n• Проверка сообщений пользователей на соблюдение законодательства\n• OCR анализ изображений\n• Система жалоб через команду /report\n• Автоматическое удаление/блокировка нарушителей\n",
     commands: [
-      { command: "start", description: "Запустить бота" },
-      { command: "help", description: "Показать справку и функции" },
-      { command: "stats", description: "Статистика модерации" },
-      { command: "settings", description: "Настройки группы (только админы)" },
       {
         command: "report",
         description: "Пожаловаться на сообщение (ответить на сообщение)",
@@ -70,10 +66,6 @@ const botConfigs = {
     description:
       "Whoop Whoop - chat moderator: checking messages and images.\n\n My features:\n• Checking user messages for legal compliance\n• OCR image analysis\n• Reporting system via /report command\n• Automatic deletion/blocking of violators\n",
     commands: [
-      { command: "start", description: "Start the bot" },
-      { command: "help", description: "Show help and features" },
-      { command: "stats", description: "Moderation statistics" },
-      { command: "settings", description: "Group settings (admins only)" },
       { command: "report", description: "Report a message (reply to message)" },
     ],
   },
@@ -85,13 +77,6 @@ const botConfigs = {
     description:
       "Whoop Whoop - ჩატის მოდერატორი: შეტყობინებისა და სურათების შემოწმება.\n\n ჩემი ფუნქციები:\n• მომხმარებლის შეტყობინებების კანონთან შესაბამისობის შემოწმება\n• OCR სურათების ანალიზი\n• საჩივრების სისტემა /report ბრძანებით\n• დამრღვევების ავტომატური წაშლა/დაბლოკვა\n",
     commands: [
-      { command: "start", description: "ბოტის გაშვება" },
-      { command: "help", description: "დახმარების და ფუნქციების ჩვენება" },
-      { command: "stats", description: "მოდერაციის სტატისტიკა" },
-      {
-        command: "settings",
-        description: "ჯგუფის პარამეტრები (მხოლოდ ადმინები)",
-      },
       {
         command: "report",
         description: "შეტყობინებაზე საჩივარი (უპასუხეთ შეტყობინებას)",
