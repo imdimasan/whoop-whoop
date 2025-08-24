@@ -2,7 +2,11 @@ import { analyzeMessage } from "../services/openai.js";
 import { logger } from "../utils/logger.js";
 import { TModerationAction } from "../interfaces/i-moderation.js";
 import { IBotContext } from "../interfaces/i-bot.js";
-import { addReport, getGroupSettings } from "../services/database.js";
+import {
+  addReport,
+  getGroupSettings,
+  recordModerationAction,
+} from "../services/database.js";
 import {
   mutedUserMessage,
   bannedUserMessage,
@@ -244,6 +248,17 @@ const deleteMessage = async (
     // Auto-delete the warning message after 15 seconds
     await autoDeleteMessage(ctx, reply.message_id, 15000);
 
+    // Record the moderation action in database
+    if (ctx.chat?.id) {
+      await recordModerationAction(
+        ctx.chat.id,
+        from.id,
+        "delete",
+        reason || defaultReasons.contentViolation,
+        message.text || message.caption || null
+      );
+    }
+
     logger.info("Message deleted with warning", {
       userId: from.id,
       chatId: ctx.chat?.id,
@@ -312,6 +327,16 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     // Auto-delete the mute notification after 30 seconds
     await autoDeleteMessage(ctx, reply.message_id, 30000);
 
+    // Record the moderation action in database
+    await recordModerationAction(
+      chat.id,
+      from.id,
+      "mute",
+      reason || defaultReasons.policyViolation,
+      message?.text || message?.caption || null,
+      muteDurationMinutes
+    );
+
     logger.info("User muted", {
       userId: from.id,
       chatId: chat.id,
@@ -352,6 +377,16 @@ const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
 
     // Auto-delete the ban notification after 30 seconds
     await autoDeleteMessage(ctx, reply.message_id, 30000);
+
+    // Record the moderation action in database
+    await recordModerationAction(
+      chat.id,
+      from.id,
+      "ban",
+      reason || defaultReasons.severeViolation,
+      message?.text || message?.caption || null,
+      null
+    );
 
     logger.info("User banned", { userId: from.id, chatId: chat.id, reason });
   } catch (error) {
@@ -457,6 +492,17 @@ export const handleReport = async (
 
       // Auto-delete after 30 seconds
       await autoDeleteMessage(ctx, reply.message_id, 30000);
+
+      // Record the moderation action in database
+      await recordModerationAction(
+        chat.id,
+        targetUserId,
+        "ban",
+        "Заблокирован по жалобам участников группы",
+        null,
+        null,
+        "community_reports"
+      );
 
       logger.info("User banned by community reports", {
         targetUserId,

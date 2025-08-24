@@ -15,6 +15,18 @@ export interface GroupSettings {
   settings: Record<string, any>;
 }
 
+export interface BlockedMember {
+  id: number;
+  group_id: number;
+  user_id: number;
+  action_type: "ban" | "mute" | "delete";
+  reason: string | null;
+  message_content: string | null;
+  duration_minutes: number | null;
+  blocked_at: Date;
+  blocked_by: string;
+}
+
 /**
  * Initialize database tables
  * @example
@@ -45,12 +57,36 @@ export const initializeTables = async (): Promise<void> => {
       )
     `);
 
+    // Create blocked_members table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS blocked_members (
+        id SERIAL PRIMARY KEY,
+        group_id BIGINT NOT NULL,
+        user_id BIGINT NOT NULL,
+        action_type VARCHAR(20) NOT NULL, -- 'ban', 'mute', 'delete'
+        reason TEXT,
+        message_content TEXT,
+        duration_minutes INTEGER, -- NULL for permanent bans, number for mutes
+        blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        blocked_by VARCHAR(50) DEFAULT 'bot' -- 'bot', 'admin', 'community_reports'
+      )
+    `);
+
     // Create indexes
     await pool.query(
       `CREATE INDEX IF NOT EXISTS idx_message_reports_message_id ON message_reports(message_id)`
     );
     await pool.query(
       `CREATE INDEX IF NOT EXISTS idx_message_reports_chat_id ON message_reports(chat_id)`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_blocked_members_group_id ON blocked_members(group_id)`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_blocked_members_user_id ON blocked_members(user_id)`
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_blocked_members_action_type ON blocked_members(action_type)`
     );
     await pool.query(
       `CREATE INDEX IF NOT EXISTS idx_message_reports_target_user ON message_reports(target_user_id)`
@@ -195,5 +231,161 @@ export const getMessageReportStats = async (
       messageId,
     });
     return { reportCount: 0, reporters: [] };
+  }
+};
+
+/**
+ * Record a moderation action (ban, mute, delete)
+ * @example
+ * await recordModerationAction(-1001, 123, 'ban', 'Drug dealer', 'продам травку', null, 'bot');
+ */
+export const recordModerationAction = async (
+  groupId: number,
+  userId: number,
+  actionType: "ban" | "mute" | "delete",
+  reason: string | null,
+  messageContent: string | null,
+  durationMinutes: number | null = null,
+  blockedBy: string = "bot"
+): Promise<boolean> => {
+  try {
+    await pool.query(
+      `INSERT INTO blocked_members 
+       (group_id, user_id, action_type, reason, message_content, duration_minutes, blocked_by) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        groupId,
+        userId,
+        actionType,
+        reason,
+        messageContent,
+        durationMinutes,
+        blockedBy,
+      ]
+    );
+
+    logger.info("Moderation action recorded", {
+      groupId,
+      userId,
+      actionType,
+      reason,
+      messageLength: messageContent?.length || 0,
+      durationMinutes,
+      blockedBy,
+    });
+
+    return true;
+  } catch (error) {
+    logger.error("Database error recording moderation action", {
+      error,
+      groupId,
+      userId,
+      actionType,
+    });
+    return false;
+  }
+};
+
+/**
+ * Get moderation statistics for a group
+ * @example
+ * const stats = await getModerationStats(-1001);
+ */
+export const getModerationStats = async (
+  groupId: number
+): Promise<{
+  totalActions: number;
+  bans: number;
+  mutes: number;
+  deletes: number;
+  last24h: number;
+  topReasons: Array<{ reason: string; count: number }>;
+}> => {
+  try {
+    // Get total counts by action type
+    const actionCounts = await pool.query(
+      `SELECT action_type, COUNT(*) as count 
+       FROM blocked_members 
+       WHERE group_id = $1 
+       GROUP BY action_type`,
+      [groupId]
+    );
+
+    // Get actions in last 24 hours
+    const recent = await pool.query(
+      `SELECT COUNT(*) as count 
+       FROM blocked_members 
+       WHERE group_id = $1 AND blocked_at > NOW() - INTERVAL '24 hours'`,
+      [groupId]
+    );
+
+    // Get top reasons
+    const topReasons = await pool.query(
+      `SELECT reason, COUNT(*) as count 
+       FROM blocked_members 
+       WHERE group_id = $1 AND reason IS NOT NULL 
+       GROUP BY reason 
+       ORDER BY count DESC 
+       LIMIT 5`,
+      [groupId]
+    );
+
+    const counts = { bans: 0, mutes: 0, deletes: 0 };
+    actionCounts.rows.forEach((row) => {
+      if (row.action_type === "ban") counts.bans = parseInt(row.count);
+      else if (row.action_type === "mute") counts.mutes = parseInt(row.count);
+      else if (row.action_type === "delete")
+        counts.deletes = parseInt(row.count);
+    });
+
+    return {
+      totalActions: counts.bans + counts.mutes + counts.deletes,
+      bans: counts.bans,
+      mutes: counts.mutes,
+      deletes: counts.deletes,
+      last24h: parseInt(recent.rows[0]?.count || "0"),
+      topReasons: topReasons.rows.map((row) => ({
+        reason: row.reason,
+        count: parseInt(row.count),
+      })),
+    };
+  } catch (error) {
+    logger.error("Database error getting moderation stats", { error, groupId });
+    return {
+      totalActions: 0,
+      bans: 0,
+      mutes: 0,
+      deletes: 0,
+      last24h: 0,
+      topReasons: [],
+    };
+  }
+};
+
+/**
+ * Get user's moderation history
+ * @example
+ * const history = await getUserModerationHistory(-1001, 123);
+ */
+export const getUserModerationHistory = async (
+  groupId: number,
+  userId: number
+): Promise<BlockedMember[]> => {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM blocked_members 
+       WHERE group_id = $1 AND user_id = $2 
+       ORDER BY blocked_at DESC`,
+      [groupId, userId]
+    );
+
+    return result.rows;
+  } catch (error) {
+    logger.error("Database error getting user moderation history", {
+      error,
+      groupId,
+      userId,
+    });
+    return [];
   }
 };

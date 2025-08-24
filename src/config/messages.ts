@@ -127,10 +127,39 @@ export const statsMessage = (
   groupTitle: string,
   canDelete: boolean,
   canRestrict: boolean,
-  missingPermissions: string[]
+  missingPermissions: string[],
+  moderationStats?: {
+    totalActions: number;
+    bans: number;
+    mutes: number;
+    deletes: number;
+    last24h: number;
+    topReasons: Array<{ reason: string; count: number }>;
+  }
 ): string => {
   const permissionStatus =
     canDelete && canRestrict ? "✅ Правильно настроен" : "❌ Отсутствуют права";
+
+  let statsSection = `\n\n<i>Подробная статистика скоро...</i>`;
+
+  if (moderationStats && moderationStats.totalActions > 0) {
+    const topReasonsText =
+      moderationStats.topReasons.length > 0
+        ? moderationStats.topReasons
+            .slice(0, 3)
+            .map((r) => `• ${r.reason}: ${r.count}`)
+            .join("\n")
+        : "Нет данных";
+
+    statsSection =
+      `\n\n<b>📊 Статистика модерации:</b>\n` +
+      `Всего действий: ${moderationStats.totalActions}\n` +
+      `🚫 Баны: ${moderationStats.bans}\n` +
+      `🔇 Блокировки: ${moderationStats.mutes}\n` +
+      `🗑 Удаления: ${moderationStats.deletes}\n` +
+      `⏰ За 24 часа: ${moderationStats.last24h}\n\n` +
+      `<b>Топ причины:</b>\n${topReasonsText}`;
+  }
 
   return (
     `${BOT_TITLE}\n` +
@@ -144,7 +173,7 @@ export const statsMessage = (
     (missingPermissions.length > 0
       ? `\n⚠️ Отсутствует: ${missingPermissions.join(", ")}`
       : "") +
-    `\n\n<i>Подробная статистика скоро...</i>`
+    statsSection
   );
 };
 
