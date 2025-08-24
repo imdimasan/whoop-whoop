@@ -310,6 +310,17 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
       await handleSettingUpdate(ctx, "reports", reports);
       return;
     }
+
+    // Delete messages callbacks
+    if (data === "set_delete_true") {
+      await handleSettingUpdate(ctx, "delete", true);
+      return;
+    }
+
+    if (data === "set_delete_false") {
+      await handleSettingUpdate(ctx, "delete", false);
+      return;
+    }
   });
 
   logger.info("Commands registered");

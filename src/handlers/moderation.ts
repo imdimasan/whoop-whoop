@@ -481,12 +481,39 @@ export const handleReport = async (
   if (result.reportCount >= maxReports) {
     // Ban the user
     try {
+      // Check if we should delete reported messages (configurable)
+      const groupSettings = await getGroupSettings(chat.id);
+      const shouldDeleteMessages =
+        groupSettings.deleteReportedMessages !== false; // Default true
+
+      if (shouldDeleteMessages) {
+        // Try to delete the reported message
+        try {
+          await ctx.api.deleteMessage(chat.id, targetMessageId);
+          logger.info("Deleted reported message", {
+            targetMessageId,
+            chatId: chat.id,
+          });
+        } catch (deleteError) {
+          logger.warn("Could not delete reported message", {
+            error: deleteError,
+            targetMessageId,
+            chatId: chat.id,
+          });
+          // Continue with ban even if message deletion fails
+        }
+      } else {
+        logger.info("Skipping message deletion (disabled in settings)", {
+          targetMessageId,
+          chatId: chat.id,
+        });
+      }
+
+      // Ban the user
       await ctx.banChatMember(targetUserId);
 
       // Send community ban message
-      const banMsg = communityBannedUserMessage(
-        `User ${targetUserId}` // We'll get the username from the context in the command handler
-      );
+      const banMsg = communityBannedUserMessage(`User ${targetUserId}`);
 
       const reply = await ctx.reply(banMsg, { parse_mode: "HTML" });
 
