@@ -19,6 +19,7 @@ export const extractTextFromImage = async (image: Buffer): Promise<string> => {
     logger.error("OCR failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+
     return "";
   }
 };
