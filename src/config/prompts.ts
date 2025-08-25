@@ -29,6 +29,7 @@ EXAMPLES TO MODERATE (HIGH severity only):
 - "Грузчики на сегодня 1000р за 1 час" (movers today 1000r per hour - suspicious)
 - "Доставка документов, хорошая оплата" (document delivery, good pay - vague)
 - "Курьер на день, до 5000р" (courier for a day, up to 5000r - suspicious)
+- "Открылась новая компания. Опыт не требуется. За оплатой в лс" (new company opened, no experience required, payment in private messages - suspicious)
 
 EXAMPLES NOT TO MODERATE:
 - Normal job offers with reasonable pay (under 2000r per day)
