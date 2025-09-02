@@ -12,6 +12,7 @@ IGNORE ALL OF THESE (DO NOT MODERATE):
 - Product prices and normal commerce
 - Regular marketplace messages
 - ANY conversation content, arguments, or language issues
+- Marketplace messages where price is defined with any currencies like GEL, USD, EUR, crupto currency as well, like BTC, USDT, ETH, etc.
 
 ONLY FLAG suspicious job/work offers that match these patterns:
 
@@ -30,12 +31,14 @@ EXAMPLES TO MODERATE (HIGH severity only):
 - "Доставка документов, хорошая оплата" (document delivery, good pay - vague)
 - "Курьер на день, до 5000р" (courier for a day, up to 5000r - suspicious)
 - "Открылась новая компания. Опыт не требуется. За оплатой в лс" (new company opened, no experience required, payment in private messages - suspicious)
+- "Здраствуйте открылась новая автомойка набираем персонал без опыта , всему обучим , все покажем , за оплатой пишите лично" (new company opened, hiring personnel without experience, will train and show everything, write privately for payment - suspicious)
 
 EXAMPLES NOT TO MODERATE:
 - Normal job offers with reasonable pay (under 2000r per day)
 - Legitimate business advertisements  
 - ANY language, swearing, arguments, conversations
 - Regular commerce and sales
+- All ads where price is defined with any currencies like GEL, USD, EUR, crupto currency as well, like BTC, USDT, ETH, etc.
 
 IMPORTANT: Only flag job offers that seem designed to recruit drug couriers through unusually high pay for simple tasks. Ignore ALL other content including any language issues. Reason should be in Russian. Include 1–2 evidence_phrases verbatim from the message.
 
