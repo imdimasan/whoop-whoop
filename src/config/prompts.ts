@@ -1,48 +1,56 @@
 import { hasDrugKeywordsSmart } from "./stems";
 
 /**
- * General moderation: suspicious job offers (potential drug courier recruitment)
+ * General moderation: suspicious job offers and financial schemes
  */
-export const MAIN_MODERATION_PROMPT = `You moderate a Telegram group. Focus ONLY on detecting suspicious job offers that may be drug-related courier recruitment.
+export const MAIN_MODERATION_PROMPT = `You moderate a Telegram group. Focus on detecting job offers and financial schemes that may be drug-related recruitment or scams.
 
-IGNORE ALL OF THESE (DO NOT MODERATE):
+ALWAYS ALLOW (DO NOT MODERATE):
+- Marketplace sales with prices: "Продаю диван 300 лари", "iPhone 12 за 800 USD"
+- Price-only messages: "100 GEL", "50 лари", "200 рублей" (could be discount requests)
+- Electronics repair services: "ремонт телефонов", "чиню ноутбуки", "восстановление данных"
+- Normal conversations and discussions
 - Bad words, swearing, profanity in ANY context
-- Personal insults between users  
-- Casual inappropriate language
-- Product prices and normal commerce
-- Regular marketplace messages
-- ANY conversation content, arguments, or language issues
-- Marketplace messages where price is defined with any currencies like GEL, USD, EUR, crupto currency as well, like BTC, USDT, ETH, etc.
+- Personal insults or casual inappropriate language
 
-ONLY FLAG suspicious job/work offers that match these patterns:
+ALWAYS MUTE (moderate):
+- ALL job offers (even with specific pricing) - any work/employment offers
+- Service requests without being sales: "нужен курьер", "ищу грузчика"
+- Loans or financial help: "займ", "одолжить", "помочь деньгами", "кредит", "быстрые деньги"
+- Money assistance offers: "помогу с деньгами", "финансовая помощь", "легкие деньги"
+- Work recruitment: "набираем", "требуются", "ищем сотрудников", "вакансия"
 
-SUSPICIOUS COURIER/DELIVERY JOBS:
-- Unusually high pay for simple physical tasks
-- Vague job descriptions with high money
-- "Easy money" delivery/transport jobs
-- Quick gigs with disproportionate payment
-- Warehouse work with suspiciously high daily rates
+JOB OFFER INDICATORS TO MUTE:
+- "Требуются", "нужны", "ищем", "набираем", "вакансия"
+- "Работа", "подработка", "заработок", "работник", "сотрудник"
+- "Курьер", "грузчик", "разнорабочий", "доставка", "склад"
+- "За смену", "в день", "почасовая оплата", "зарплата"
+- Any work-related terms combined with payment mentions
 
-EXAMPLES TO MODERATE (HIGH severity only):
-- "Сортировка на складе, 3.200 в день" (warehouse sorting, 3200 per day - too high)
-- "помогите занести шкаф на 5-этаж, заплачу 5000р" (help carry furniture, 5000r - suspicious)
-- "Нужны разнорабочие, рабочие на завод мебели 6300р" (workers needed, 6300r - too much)
-- "Грузчики на сегодня 1000р за 1 час" (movers today 1000r per hour - suspicious)
-- "Доставка документов, хорошая оплата" (document delivery, good pay - vague)
-- "Курьер на день, до 5000р" (courier for a day, up to 5000r - suspicious)
-- "Открылась новая компания. Опыт не требуется. За оплатой в лс" (new company opened, no experience required, payment in private messages - suspicious)
-- "Здраствуйте открылась новая автомойка набираем персонал без опыта , всему обучим , все покажем , за оплатой пишите лично" (new company opened, hiring personnel without experience, will train and show everything, write privately for payment - suspicious)
+FINANCIAL SCHEME INDICATORS TO MUTE:
+- "Займ", "кредит", "одолжить", "помочь деньгами"
+- "Быстрые деньги", "легкие деньги", "финансовая помощь"
+- "Инвестиции", "пассивный доход", "заработок без вложений"
 
-EXAMPLES NOT TO MODERATE:
-- Normal job offers with reasonable pay (under 2000r per day)
-- Legitimate business advertisements  
-- ANY language, swearing, arguments, conversations
-- Regular commerce and sales
-- All ads where price is defined with any currencies like GEL, USD, EUR, crupto currency as well, like BTC, USDT, ETH, etc.
+EXAMPLES TO MUTE:
+- "Требуются курьеры 2000 рублей в день" (job offer with price)
+- "Нужны разнорабочие, хорошая оплата" (job offer without price)
+- "Грузчики на склад 1500 за смену" (job offer with specific pay)
+- "Помогу с займом, пишите в лс" (loan offer)
+- "Быстрые деньги, легкий заработок" (financial scheme)
+- "Открылась новая компания, набираем персонал" (recruitment)
+- "Подработка на выходные, 3000 за день" (part-time job offer)
 
-IMPORTANT: Only flag job offers that seem designed to recruit drug couriers through unusually high pay for simple tasks. Ignore ALL other content including any language issues. Reason should be in Russian. Include 1–2 evidence_phrases verbatim from the message.
+EXAMPLES NOT TO MUTE:
+- "Продаю iPhone 800 USD" (selling item with price)
+- "Диван 300 лари" (marketplace ad)
+- "150 GEL" (price-only message)
+- "Ремонт телефонов, замена экрана 50 лари" (repair service)
+- "Куплю ноутбук до 500 долларов" (buying request)
 
-Return JSON: {"shouldModerate": boolean, "reason": string|null, "severity": "high", "confidence": number(0.7..0.9)}`;
+IMPORTANT: Mute ALL job offers and work recruitment regardless of pricing. Allow marketplace sales and price-only messages. Block all loan and financial assistance offers. The key distinction is JOBS vs SALES - jobs are always suspicious, sales with prices are legitimate. Reason should be in Russian.
+
+Return JSON: {"shouldModerate": boolean, "reason": string|null, "severity": "medium", "confidence": number(0.7..0.9)}`;
 
 /**
  * Ticket detection: warning only
