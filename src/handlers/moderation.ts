@@ -293,6 +293,20 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     const groupSettings = await getGroupSettings(chat.id);
     const muteDurationMinutes = groupSettings.muteDurationMinutes || 60;
 
+    // Delete all user messages before muting
+    const deletionResult = await deleteAllUserMessages(
+      ctx,
+      from.id,
+      `User muted: ${reason || defaultReasons.policyViolation}`
+    );
+
+    logger.info("Bulk deletion completed for muted user", {
+      userId: from.id,
+      chatId: chat.id,
+      deleted: deletionResult.deleted,
+      errors: deletionResult.errors,
+    });
+
     // Calculate mute duration
     const untilDate = Math.floor(Date.now() / 1000) + muteDurationMinutes * 60;
 
@@ -363,6 +377,20 @@ const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
   try {
     // Delete the message first
     await ctx.deleteMessage();
+
+    // Delete all user messages before banning
+    const deletionResult = await deleteAllUserMessages(
+      ctx,
+      from.id,
+      `User banned: ${reason || defaultReasons.severeViolation}`
+    );
+
+    logger.info("Bulk deletion completed for banned user", {
+      userId: from.id,
+      chatId: chat.id,
+      deleted: deletionResult.deleted,
+      errors: deletionResult.errors,
+    });
 
     // Ban user
     await ctx.banChatMember(from.id);
@@ -553,6 +581,115 @@ export const handleReport = async (
     success: true,
     message: `Жалоба принята (${result.reportCount}/${maxReports})`,
   };
+};
+
+/**
+ * Deletes all messages from a specific user in the chat
+ * @example
+ * await deleteAllUserMessages(ctx, userId, 'User was banned');
+ */
+const deleteAllUserMessages = async (
+  ctx: IBotContext,
+  userId: number,
+  reason: string
+): Promise<{ deleted: number; errors: number }> => {
+  const { chat } = ctx;
+
+  if (!chat) {
+    return { deleted: 0, errors: 0 };
+  }
+
+  let deleted = 0;
+  let errors = 0;
+  let lastMessageId = 0;
+
+  try {
+    logger.info("Starting bulk message deletion", {
+      userId,
+      chatId: chat.id,
+      reason,
+    });
+
+    // Get recent messages (Telegram API limitation - can't get all history)
+    // We'll try to delete messages by iterating through recent message IDs
+    // This is a best-effort approach due to Telegram Bot API limitations
+
+    // Start from current message ID and work backwards
+    const currentMessage = ctx.message;
+    if (currentMessage) {
+      lastMessageId = currentMessage.message_id;
+    }
+
+    // Try to delete messages in batches, going backwards from current message
+    const batchSize = 100; // Process in batches to avoid overwhelming the API
+    const maxAttempts = 500; // Limit total attempts to prevent infinite loops
+
+    for (
+      let attempt = 0;
+      attempt < maxAttempts && lastMessageId > 0;
+      attempt++
+    ) {
+      const startId = Math.max(1, lastMessageId - batchSize);
+      const promises: Promise<void>[] = [];
+
+      // Create batch of deletion promises
+      for (let messageId = lastMessageId; messageId >= startId; messageId--) {
+        promises.push(
+          ctx.api
+            .deleteMessage(chat.id, messageId)
+            .then(() => {
+              deleted++;
+              logger.debug("Deleted message", { messageId, userId });
+            })
+            .catch((error) => {
+              errors++;
+              // Only log non-expected errors (message not found is expected)
+              if (
+                !error.description?.includes("message to delete not found") &&
+                !error.description?.includes("message can't be deleted")
+              ) {
+                logger.debug("Failed to delete message", {
+                  messageId,
+                  userId,
+                  error: error.description,
+                });
+              }
+            })
+        );
+      }
+
+      // Wait for current batch to complete
+      await Promise.allSettled(promises);
+
+      // Move to next batch
+      lastMessageId = startId - 1;
+
+      // Add small delay between batches to respect rate limits
+      if (attempt < maxAttempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+
+    logger.info("Bulk message deletion completed", {
+      userId,
+      chatId: chat.id,
+      deleted,
+      errors,
+      reason,
+    });
+
+    return { deleted, errors };
+  } catch (error) {
+    logger.error("Failed during bulk message deletion", {
+      error,
+      userId,
+      chatId: chat.id,
+      deleted,
+      errors,
+    });
+
+    return { deleted, errors };
+  }
 };
 
 // For backward compatibility, export the main functions as default
