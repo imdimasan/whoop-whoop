@@ -39,6 +39,7 @@ export const analyzeMessage = async (
 
     // First, use OpenAI's moderation endpoint
     const moderation = await openai.moderations.create({
+      model: "omni-moderation-latest",
       input: message,
     });
 
