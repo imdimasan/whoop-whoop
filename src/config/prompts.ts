@@ -19,6 +19,7 @@ ALWAYS MUTE (moderate):
 - Loans or financial help: "займ", "одолжить", "помочь деньгами", "кредит", "быстрые деньги"
 - Money assistance offers: "помогу с деньгами", "финансовая помощь", "легкие деньги"
 - Work recruitment: "набираем", "требуются", "ищем сотрудников", "вакансия"
+- Any work hiring or recruitment
 
 JOB OFFER INDICATORS TO MUTE:
 - "Требуются", "нужны", "ищем", "набираем", "вакансия"
@@ -73,7 +74,7 @@ Return JSON: {"isTicket": true|false, "confidence": number, "reason": string|nul
 /**
  * Drug detection: immediate ban
  */
-export const DRUG_DETECTION_PROMPT = `Detect drug sales/abuse. Flag any: drug sales, purchases, drug slang. Reason should be in Russian.
+export const DRUG_DETECTION_PROMPT = `Detect drug sales/abuse. Flag any: drug sales, purchases, drug slang, job offers, work recruitment. Reason should be in Russian.
 
 Return JSON: {"isDrugRelated": true|false, "confidence": number, "reason": string|null, "substances": []}`;
 
