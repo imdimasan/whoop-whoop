@@ -65,20 +65,25 @@ IMPORTANT: Mute ALL job offers and work recruitment regardless of pricing. Allow
 Return JSON: {"shouldModerate": boolean, "reason": string|null, "severity": "medium", "confidence": number(0.7..0.9)}`;
 
 /**
- * Ticket detection: warning only
+ * Ticket detection: mute user but keep message
  */
-export const TICKET_DETECTION_PROMPT = `Detect ticket sales vs ticket buying requests. 
+export const TICKET_DETECTION_PROMPT = `Detect ticket sales (potential fraud risk). 
 
-ONLY FLAG ticket SALES (warn the group about potential fraud):
+ONLY FLAG ticket SALES (mute the user):
 - "Продаю/продам билеты", "перепродам", "реализую"
 - "Есть лишний билет, продам"
-- "Билеты на футбол/концерт, цена договорная"
+- "Билеты на футбол/концерт/театр/стендап, цена..."
+- Any mention of selling tickets with prices or discounts
+- "bileta", "bilet", "ticket" combined with selling terms
+- Urgent sales: "сегодня", "через час", "срочно продам"
+- Discount mentions: "дешевле чем на сайте", "скидка", "отдам дешево"
 
 DO NOT FLAG ticket BUYING requests (allowed):
 - "Куплю", "ищу", "нужен", "приобрету" билет(ы)
 - Questions like "Кто продает билеты?" (this is a buying intent)
 
 If both BUY and SELL appear, classify as SELL and explain why. Reason should be in Russian.
+For ticket sales, respond with confidence 0.75-0.85 to trigger mute action.
 
 Return JSON: {"isTicket": true|false, "confidence": number, "reason": string|null}`;
 
@@ -193,7 +198,17 @@ export const DETECTION_PATTERNS = {
     "доставка",
     "склад",
   ],
-  tickets: ["билет", "билета", "билеты", "билетов"],
+  tickets: [
+    "билет",
+    "билета",
+    "билеты",
+    "билетов",
+    "bilet",
+    "bileta",
+    "bilety",
+    "ticket",
+    "tickets",
+  ],
   drugs: [],
   gambling: [
     "казино",
@@ -219,7 +234,7 @@ export const DETECTION_PATTERNS = {
 export const CONFIDENCE_THRESHOLDS = {
   // For suspicious job offers only – slightly lower so high-pay jobs are moderated
   general: { ban: 0.8, mute: 0.6, delete: 0.4 },
-  tickets: { ban: 1.0, mute: 1.0, delete: 1.0 }, // Never ban/mute tickets
+  tickets: { ban: 1.0, mute: 0.7, delete: 1.0 }, // Mute at 0.7, never ban or delete
   drugs: { ban: 0.5, mute: 0.3, delete: 0.1 }, // Aggressive for drugs
   gambling: { ban: 0.6, mute: 0.4, delete: 0.2 }, // Aggressive for gambling spam
 };

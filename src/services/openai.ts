@@ -315,16 +315,16 @@ const handleTicketAnalysis = (analysis: any): IModerationResult => {
   const isTicket = analysis.isTicket || false;
 
   if (isTicket) {
-    const confidence = analysis.confidence || 0.5;
+    const confidence = analysis.confidence || 0.75;
 
-    // For tickets, only warn the group - never ban/mute users
+    // For tickets, mute user but keep the message visible
     const result = {
       shouldModerate: true,
       reason:
         translateReason(analysis.reason) ||
         "Обнаружена продажа билетов - возможный риск мошенничества",
-      severity: "low" as const,
-      suggestedAction: "warn_group" as TModerationAction,
+      severity: "medium" as const,
+      suggestedAction: "mute_user_keep_message" as TModerationAction,
       confidence,
     };
 

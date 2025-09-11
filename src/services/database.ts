@@ -242,7 +242,7 @@ export const getMessageReportStats = async (
 export const recordModerationAction = async (
   groupId: number,
   userId: number,
-  actionType: "ban" | "mute" | "delete",
+  actionType: "ban" | "mute" | "mute_user_keep_message" | "delete",
   reason: string | null,
   messageContent: string | null,
   durationMinutes: number | null = null,
