@@ -201,6 +201,10 @@ const takeAction = async (
         await muteUser(ctx, reason);
         break;
 
+      case "mute_user_keep_message":
+        await muteUserKeepMessage(ctx, reason);
+        break;
+
       case "ban_user":
         await banUser(ctx, reason);
         break;
@@ -358,6 +362,84 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     });
   } catch (error) {
     logger.error("Failed to mute user", { error, userId: from.id });
+  }
+};
+
+/**
+ * Mutes a user temporarily and keeps the message
+ * @example
+ * await muteUserKeepMessage(ctx, 'Repeated violations');
+ */
+const muteUserKeepMessage = async (
+  ctx: IBotContext,
+  reason?: string
+): Promise<void> => {
+  const { message } = ctx;
+  const { from, chat } = message || {};
+
+  if (!from || !chat) {
+    return;
+  }
+
+  try {
+    // Get group-specific mute duration
+    const groupSettings = await getGroupSettings(chat.id);
+    const muteDurationMinutes = groupSettings.muteDurationMinutes || 60;
+
+    // Calculate mute duration
+    const untilDate = Math.floor(Date.now() / 1000) + muteDurationMinutes * 60;
+
+    // Restrict user
+    await ctx.restrictChatMember(
+      from.id,
+      {
+        can_send_messages: false,
+        can_send_audios: false,
+        can_send_documents: false,
+        can_send_photos: false,
+        can_send_videos: false,
+        can_send_video_notes: false,
+        can_send_voice_notes: false,
+        can_send_polls: false,
+        can_send_other_messages: false,
+      },
+      {
+        until_date: untilDate,
+      }
+    );
+
+    // Send notification
+    const muteMsg = mutedUserMessage(
+      from.first_name,
+      muteDurationMinutes,
+      reason || defaultReasons.policyViolation
+    );
+
+    const reply = await ctx.reply(muteMsg, { parse_mode: "HTML" });
+
+    // Auto-delete the mute notification after 30 seconds
+    await autoDeleteMessage(ctx, reply.message_id, 30000);
+
+    // Record the moderation action in database
+    await recordModerationAction(
+      chat.id,
+      from.id,
+      "mute_user_keep_message",
+      reason || defaultReasons.policyViolation,
+      message?.text || message?.caption || null,
+      muteDurationMinutes
+    );
+
+    logger.info("User muted and message kept", {
+      userId: from.id,
+      chatId: chat.id,
+      duration: muteDurationMinutes,
+    });
+  } catch (error) {
+    logger.error("Failed to mute user and keep message", {
+      error,
+      userId: from.id,
+    });
   }
 };
 
