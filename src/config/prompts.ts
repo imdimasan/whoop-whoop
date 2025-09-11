@@ -237,7 +237,16 @@ export const getPromptForContent = (message: string): string => {
     return DRUG_DETECTION_PROMPT;
   }
 
-  // Check gambling (second priority)
+  // Check job keywords (second priority)
+  const hasJobKeywords = DETECTION_PATTERNS.general.some((keyword) =>
+    lowerMessage.includes(keyword.toLowerCase())
+  );
+
+  if (hasJobKeywords) {
+    return MAIN_MODERATION_PROMPT;
+  }
+
+  // Check gambling (next priority)
   const hasGamblingKeywords = DETECTION_PATTERNS.gambling.some((keyword) =>
     lowerMessage.includes(keyword.toLowerCase())
   );
@@ -278,6 +287,14 @@ export const determineContentType = (
 
   if (hasDrugKeywordsSmart(lowerMessage)) {
     return "drugs";
+  }
+
+  if (
+    DETECTION_PATTERNS.general.some((keyword) =>
+      lowerMessage.includes(keyword.toLowerCase())
+    )
+  ) {
+    return "general";
   }
 
   if (
