@@ -14,12 +14,23 @@ ALWAYS ALLOW (DO NOT MODERATE):
 - Personal insults or casual inappropriate language
 
 ALWAYS MUTE (moderate):
-- ALL job offers (even with specific pricing) - any work/employment offers
+- ALL job offers (even with specific pricing) — any message containing job or work keywords MUST be moderated.
+  Job keywords include: "работа", "вакансия", "требуются", "курьер", "грузчик", "подработка", "смена", "заработок", "работник", "сотрудник", "разнорабочий", "доставка", "склад", "смена", "оплата", "зарплата".
 - Service requests without being sales: "нужен курьер", "ищу грузчика"
 - Loans or financial help: "займ", "одолжить", "помочь деньгами", "кредит", "быстрые деньги"
 - Money assistance offers: "помогу с деньгами", "финансовая помощь", "легкие деньги"
 - Work recruitment: "набираем", "требуются", "ищем сотрудников", "вакансия"
 - Any work hiring or recruitment
+
+HIGH-PAY JOB RULE:
+- If a message mentions payment per shift/day/hour and the amount exceeds:
+  • 3000 RUR за день / смену
+  • 100 GEL за день / смену
+  • 40 USD per day / shift
+  then respond with confidence 0.90 so the action will be ban.
+
+CONFIDENCE GUIDANCE:
+If a message matches ANY rule in "ALWAYS MUTE" section, respond with shouldModerate = true and confidence 0.85-0.95.
 
 JOB OFFER INDICATORS TO MUTE:
 - "Требуются", "нужны", "ищем", "набираем", "вакансия"
@@ -168,7 +179,20 @@ export const translateReason = (reason: string): string => {
  * Minimal detection patterns - ready for your additions
  */
 export const DETECTION_PATTERNS = {
-  general: [],
+  general: [
+    "работа",
+    "вакансия",
+    "требуется",
+    "требуются",
+    "курьер",
+    "грузчик",
+    "подработка",
+    "заработок",
+    "сотрудник",
+    "разнорабочий",
+    "доставка",
+    "склад",
+  ],
   tickets: ["билет", "билета", "билеты", "билетов"],
   drugs: [],
   gambling: [
@@ -193,7 +217,8 @@ export const DETECTION_PATTERNS = {
  * Action thresholds
  */
 export const CONFIDENCE_THRESHOLDS = {
-  general: { ban: 0.85, mute: 0.75, delete: 0.7 }, // For suspicious job offers only
+  // For suspicious job offers only – slightly lower so high-pay jobs are moderated
+  general: { ban: 0.8, mute: 0.6, delete: 0.4 },
   tickets: { ban: 1.0, mute: 1.0, delete: 1.0 }, // Never ban/mute tickets
   drugs: { ban: 0.5, mute: 0.3, delete: 0.1 }, // Aggressive for drugs
   gambling: { ban: 0.6, mute: 0.4, delete: 0.2 }, // Aggressive for gambling spam
