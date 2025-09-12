@@ -11,7 +11,7 @@ import {
   determineContentType,
   MODERATION_CATEGORY_TRANSLATIONS,
   translateReason,
-} from "../config/prompts.js";
+} from "../config/rules.js";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -79,7 +79,7 @@ export const analyzeMessage = async (
         shouldModerate: true,
         reason: `Нарушение контента: ${translatedCategories}`,
         severity: determineSeverity(maxScore),
-        suggestedAction: determinActionByContentType(maxScore, "general"),
+        suggestedAction: determinActionByContentType(maxScore, "financial"),
         confidence: maxScore,
       };
     }
@@ -171,6 +171,10 @@ const performCustomAnalysis = async (
     // Handle different response formats based on content type
     if (contentType === "drugs") {
       return handleDrugAnalysis(analysis);
+    }
+
+    if (contentType === "jobs") {
+      return handleJobAnalysis(analysis);
     }
 
     if (contentType === "gambling") {
@@ -266,6 +270,59 @@ const handleDrugAnalysis = (analysis: any): IModerationResult => {
 };
 
 /**
+ * Handles job/hiring-related content analysis
+ * @example
+ * const result = handleJobAnalysis(analysis);
+ */
+const handleJobAnalysis = (analysis: any): IModerationResult => {
+  const { isJobOffer } = analysis;
+  const { confidence } = analysis;
+  const { reason } = analysis;
+
+  if (!isJobOffer) {
+    return {
+      shouldModerate: false,
+      severity: "low",
+      suggestedAction: "none",
+      confidence: 0,
+    };
+  }
+
+  if (isJobOffer) {
+    const finalConfidence = confidence || 0.7;
+
+    const result = {
+      shouldModerate: true,
+      reason:
+        translateReason(reason) || "Обнаружено предложение работы или найм",
+      severity:
+        finalConfidence >= 0.8 ? ("high" as const) : ("medium" as const),
+      suggestedAction: determinActionByContentType(finalConfidence, "jobs"),
+      confidence: finalConfidence,
+    };
+
+    logger.info("Job offer detected", {
+      result: {
+        shouldModerate: result.shouldModerate,
+        action: result.suggestedAction,
+        reason: result.reason,
+        confidence: result.confidence,
+        jobType: analysis.jobType,
+      },
+    });
+
+    return result;
+  }
+
+  return {
+    shouldModerate: false,
+    severity: "low",
+    suggestedAction: "none",
+    confidence: 0,
+  };
+};
+
+/**
  * Handles gambling-related content analysis
  * @example
  * const result = handleGamblingAnalysis(analysis);
@@ -355,7 +412,7 @@ const handleTicketAnalysis = (analysis: any): IModerationResult => {
  */
 const determinActionByContentType = (
   score: number,
-  contentType: "drugs" | "tickets" | "general" | "gambling"
+  contentType: "financial" | "jobs" | "tickets" | "drugs" | "gambling"
 ): TModerationAction => {
   const thresholds = getThresholdsForContent(contentType);
 
