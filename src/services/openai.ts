@@ -122,6 +122,14 @@ const performCustomAnalysis = async (
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
+        // The first system message explicitly instructs the model to reply strictly in JSON.
+        // This satisfies the OpenAI requirement that at least one message must contain the word "json"
+        // when using the `response_format` parameter set to `json_object`.
+        {
+          role: "system",
+          content:
+            "You are a specialized content-moderation assistant. Always reply in valid JSON. The JSON must include keys like shouldModerate, reason, confidence. Do NOT include any additional text outside the JSON block.",
+        },
         {
           role: "system",
           content: prompt,
