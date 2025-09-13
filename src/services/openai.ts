@@ -6,12 +6,12 @@ import {
   TModerationAction,
 } from "../interfaces/i-moderation.js";
 import {
-  getPromptForContent,
+  getPromptForContentType,
   getThresholdsForContent,
-  determineContentType,
   MODERATION_CATEGORY_TRANSLATIONS,
   translateReason,
 } from "../config/rules.js";
+import classifyContent from "../helpers/classify-content.js";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -109,14 +109,19 @@ const performCustomAnalysis = async (
   message: string
 ): Promise<IModerationResult> => {
   try {
-    // First, determine content type and get appropriate prompt
-    const contentType = determineContentType(message);
-    const prompt = getPromptForContent(message);
+    // Use AI to classify content type and get appropriate prompt
+    const classification = await classifyContent(message);
+    const contentType = classification.category;
+    const prompt = getPromptForContentType(contentType);
 
     logger.info("Performing custom analysis", {
       message: message.substring(0, 50),
       contentType,
       promptType: contentType,
+      aiClassification: {
+        confidence: classification.confidence,
+        reasoning: classification.reasoning,
+      },
     });
 
     const completion = await openai.chat.completions.create({
