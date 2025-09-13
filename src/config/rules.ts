@@ -1,36 +1,11 @@
-import loadMarkdownFile from "../helpers/load-md-files";
+import {
+  JOB_HIRING_DETECTION_PROMPT,
+  DRUG_DETECTION_PROMPT,
+  GAMBLING_DETECTION_PROMPT,
+  TICKET_DETECTION_PROMPT,
+  FINANCIAL_MODERATION_PROMPT,
+} from "./prompts/index.js";
 import { hasDrugKeywordsSmart } from "./stems";
-
-/**
- * Financial moderation prompt loaded from markdown file - for marketplace sales and financial schemes
- */
-export const FINANCIAL_MODERATION_PROMPT = loadMarkdownFile(
-  "financial-moderation.md"
-);
-
-/**
- * Job/hiring detection: moderate job offers and recruitment
- */
-export const JOB_HIRING_DETECTION_PROMPT = loadMarkdownFile(
-  "job-hiring-detection.md"
-);
-
-/**
- * Ticket detection: mute user but keep message
- */
-export const TICKET_DETECTION_PROMPT = loadMarkdownFile("ticket-detection.md");
-
-/**
- * Drug detection: immediate ban
- */
-export const DRUG_DETECTION_PROMPT = loadMarkdownFile("drugs-detection.md");
-
-/**
- * Gambling detection: immediate ban
- */
-export const GAMBLING_DETECTION_PROMPT = loadMarkdownFile(
-  "gambling-detection.md"
-);
 
 /**
  * Translation map for OpenAI moderation categories to Russian
@@ -122,6 +97,57 @@ export const DETECTION_PATTERNS = {
     "склад",
     "ищем сотрудников",
     "приглашаем на работу",
+    "выгуливать",
+    "выгул",
+    "дегустация",
+    "дегустировать",
+    "тестировать",
+    "тестирование",
+    "услуги",
+    "помощник",
+    "помощь",
+    "няня",
+    "уборка",
+    "убирать",
+    "мытье",
+    "готовка",
+    "готовить",
+    "присмотр",
+    "сиделка",
+    "репетитор",
+    "массаж",
+    "фотосессия",
+    "модель",
+    "актер",
+    "промоутер",
+    "консультант",
+    "менеджер",
+    "администратор",
+    "оператор",
+    "водитель",
+    "таксист",
+    "переводчик",
+    "дизайнер",
+    "программист",
+    "мастер",
+    "специалист",
+    "исполнитель",
+    "фрилансер",
+    "удаленно",
+    "дистанционно",
+    "почасовая",
+    "ставка",
+    "оплата",
+    "зарплата",
+    "доход",
+    "₽/день",
+    "₽/час",
+    "₽ в день",
+    "₽ в час",
+    "руб/день",
+    "руб/час",
+    "рублей в день",
+    "рублей в час",
   ],
   // Ticket sales
   tickets: [
@@ -171,9 +197,9 @@ export const CONFIDENCE_THRESHOLDS = {
 };
 
 /**
- * Route to appropriate prompt based on content analysis
+ * Route to appropriate prompt based on content analysis (keyword-based - legacy)
  */
-export const getPromptForContent = (message: string): string => {
+export const getPromptForContentLegacy = (message: string): string => {
   const lowerMessage = message.toLowerCase();
 
   // Check drugs first (highest priority)
@@ -220,6 +246,40 @@ export const getPromptForContent = (message: string): string => {
 
   // Default to financial moderation for general marketplace content
   return FINANCIAL_MODERATION_PROMPT;
+};
+
+/**
+ * Route to appropriate prompt based on AI content classification
+ * @example
+ * const prompt = getPromptForContentType('jobs');
+ */
+export const getPromptForContentType = (
+  contentType: "drugs" | "jobs" | "gambling" | "tickets" | "financial"
+): string => {
+  switch (contentType) {
+    case "drugs":
+      return DRUG_DETECTION_PROMPT;
+    case "jobs":
+      return JOB_HIRING_DETECTION_PROMPT;
+    case "gambling":
+      return GAMBLING_DETECTION_PROMPT;
+    case "tickets":
+      return TICKET_DETECTION_PROMPT;
+    case "financial":
+      return FINANCIAL_MODERATION_PROMPT;
+    default:
+      return FINANCIAL_MODERATION_PROMPT;
+  }
+};
+
+/**
+ * Route to appropriate prompt based on content analysis
+ * This is now a placeholder that will be replaced by AI-powered classification in the service layer
+ */
+export const getPromptForContent = (message: string): string => {
+  // This function is kept for backward compatibility
+  // The actual AI-powered classification happens in the OpenAI service
+  return getPromptForContentLegacy(message);
 };
 
 /**
