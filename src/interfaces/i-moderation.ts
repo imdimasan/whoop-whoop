@@ -1,14 +1,4 @@
-/**
- * Moderation action types
- */
-export type TModerationAction =
-  | "none"
-  | "delete_message"
-  | "mute_user"
-  | "mute_user_keep_message"
-  | "ban_user"
-  | "warn_user"
-  | "warn_group";
+import { TModerationAction } from "./i-actions.js";
 
 /**
  * Moderation result from OpenAI

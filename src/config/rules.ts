@@ -1,10 +1,3 @@
-import {
-  JOB_HIRING_DETECTION_PROMPT,
-  DRUG_DETECTION_PROMPT,
-  GAMBLING_DETECTION_PROMPT,
-  TICKET_DETECTION_PROMPT,
-  FINANCIAL_MODERATION_PROMPT,
-} from "./prompts/index.js";
 import { hasDrugKeywordsSmart } from "./stems";
 
 /**
@@ -181,122 +174,11 @@ export const DETECTION_PATTERNS = {
 };
 
 /**
- * Action thresholds by content type
- */
-export const CONFIDENCE_THRESHOLDS = {
-  // Financial schemes in main moderation
-  financial: { ban: 0.8, mute: 0.6, delete: 0.4 },
-  // Job offers and recruitment
-  jobs: { ban: 0.8, mute: 0.6, delete: 0.4 }, // High-pay jobs get higher confidence
-  // Ticket sales - mute only
-  tickets: { ban: 1.0, mute: 0.7, delete: 1.0 }, // Mute at 0.7, never ban or delete
-  // Drug-related content - aggressive
-  drugs: { ban: 0.5, mute: 0.3, delete: 0.1 }, // Aggressive for drugs
-  // Gambling spam - aggressive
-  gambling: { ban: 0.6, mute: 0.4, delete: 0.2 }, // Aggressive for gambling spam
-};
-
-/**
- * Route to appropriate prompt based on content analysis (keyword-based - legacy)
- */
-export const getPromptForContentLegacy = (message: string): string => {
-  const lowerMessage = message.toLowerCase();
-
-  // Check drugs first (highest priority)
-  const hasDrugKeywords = hasDrugKeywordsSmart(lowerMessage);
-
-  if (hasDrugKeywords) {
-    return DRUG_DETECTION_PROMPT;
-  }
-
-  // Check job keywords (second priority)
-  const hasJobKeywords = DETECTION_PATTERNS.jobs.some((keyword) =>
-    lowerMessage.includes(keyword.toLowerCase())
-  );
-
-  if (hasJobKeywords) {
-    return JOB_HIRING_DETECTION_PROMPT;
-  }
-
-  // Check gambling (third priority)
-  const hasGamblingKeywords = DETECTION_PATTERNS.gambling.some((keyword) =>
-    lowerMessage.includes(keyword.toLowerCase())
-  );
-
-  if (hasGamblingKeywords) {
-    return GAMBLING_DETECTION_PROMPT;
-  }
-
-  // Check tickets (fourth priority)
-  const hasTicketKeywords = DETECTION_PATTERNS.tickets.some((keyword) =>
-    lowerMessage.includes(keyword.toLowerCase())
-  );
-
-  if (hasTicketKeywords) {
-    return TICKET_DETECTION_PROMPT;
-  }
-
-  // Check financial schemes
-  const hasFinancialKeywords = DETECTION_PATTERNS.financial.some((keyword) =>
-    lowerMessage.includes(keyword.toLowerCase())
-  );
-  if (hasFinancialKeywords) {
-    return FINANCIAL_MODERATION_PROMPT;
-  }
-
-  // Default to financial moderation for general marketplace content
-  return FINANCIAL_MODERATION_PROMPT;
-};
-
-/**
- * Route to appropriate prompt based on AI content classification
- * @example
- * const prompt = getPromptForContentType('jobs');
- */
-export const getPromptForContentType = (
-  contentType: "drugs" | "jobs" | "gambling" | "tickets" | "financial"
-): string => {
-  switch (contentType) {
-    case "drugs":
-      return DRUG_DETECTION_PROMPT;
-    case "jobs":
-      return JOB_HIRING_DETECTION_PROMPT;
-    case "gambling":
-      return GAMBLING_DETECTION_PROMPT;
-    case "tickets":
-      return TICKET_DETECTION_PROMPT;
-    case "financial":
-      return FINANCIAL_MODERATION_PROMPT;
-    default:
-      return FINANCIAL_MODERATION_PROMPT;
-  }
-};
-
-/**
- * Route to appropriate prompt based on content analysis
- * This is now a placeholder that will be replaced by AI-powered classification in the service layer
- */
-export const getPromptForContent = (message: string): string => {
-  // This function is kept for backward compatibility
-  // The actual AI-powered classification happens in the OpenAI service
-  return getPromptForContentLegacy(message);
-};
-
-/**
- * Get thresholds for content type
- */
-export const getThresholdsForContent = (
-  contentType: "financial" | "jobs" | "tickets" | "drugs" | "gambling"
-) => {
-  return CONFIDENCE_THRESHOLDS[contentType];
-};
-
-/**
  * Determine content type based on message analysis
  */
 export const determineContentType = (
   message: string
-): "financial" | "jobs" | "tickets" | "drugs" | "gambling" => {
+): "default" | "jobs" | "tickets" | "drugs" | "gambling" => {
   const lowerMessage = message.toLowerCase();
 
   // Check drugs first (highest priority)
@@ -331,15 +213,6 @@ export const determineContentType = (
     return "tickets";
   }
 
-  // Check financial schemes
-  if (
-    DETECTION_PATTERNS.financial.some((keyword) =>
-      lowerMessage.includes(keyword.toLowerCase())
-    )
-  ) {
-    return "financial";
-  }
-
-  // Default to financial for main moderation
-  return "financial";
+  // Default to default (no moderation needed)
+  return "default";
 };
