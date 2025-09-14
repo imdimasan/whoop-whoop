@@ -176,6 +176,36 @@ const RX_TRAVA = stemToRegex("трав");
 const RX_FEN = stemToRegex("фен");
 
 /**
+ * Medical equipment and supplies context markers to avoid false positives
+ * @example
+ * // returns false for messages like "omron медицинский бесконтактный термометр"
+ */
+const MEDICAL_DEVICE_MARKERS = [
+  // generic medical context
+  "медицинск",
+  "аптеч",
+  "стерил",
+  // common medical devices
+  "термометр",
+  "тонометр",
+  "пульсоксиметр",
+  "глюкометр",
+  "небулайзер",
+  "ингалятор",
+  "пульсометр",
+  // brands and descriptors
+  "omron",
+  "омрон",
+  "электронн",
+  "бесконтактн",
+  // accessories / supplies
+  "маск",
+  "повязк",
+  "пластыр",
+  "антисептик",
+] as const;
+
+/**
  * Utility: check if any token is included in text
  * @example
  * containsAny('трава для кошек', ['кош']) // true
@@ -197,8 +227,6 @@ const containsAny = (text: string, tokens: readonly string[]): boolean => {
 export const hasDrugKeywordsSmart = (message: string): boolean => {
   const norm = normalizeBasic(message);
   const squeezed = squeezeLettersDigits(message);
-
-  console.log("MESSAGE =======>", message);
 
   // Guard: "кошачья трава" or similar pet-grass products should not be flagged
   const hasTrava = RX_TRAVA.test(norm) || RX_TRAVA.test(squeezed);
@@ -264,6 +292,12 @@ export const hasDrugKeywordsSmart = (message: string): boolean => {
     if (hairDryerContext) {
       return false;
     }
+  }
+
+  // Guard: medical equipment context should not be flagged
+  // Examples: "omron медицинский бесконтактный термометр", "тонометр OMRON"
+  if (containsAny(norm, MEDICAL_DEVICE_MARKERS)) {
+    return false;
   }
 
   // 1) Hard stems - immediately true (catches Koeks, TPABA, m-e-f etc.)

@@ -1,15 +1,16 @@
 # 🤖 Whoop Whoop Telegram Moderation Bot
 
-An AI-powered Telegram moderation bot that specializes in anti-drug enforcement with OCR support and community-driven reporting system.
+An AI-powered Telegram moderation bot with comprehensive content classification system, OCR support, and community-driven reporting. Specializes in detecting drugs, suspicious job offers, gambling, ticket fraud, and financial schemes.
 
 ## ✨ Features
 
-- **🎯 Anti-Drug Focus**: Specialized detection of drug-related content and suspicious job offers
-- **🔍 OCR Support**: Analyzes text within images to detect drug advertisements
+- **🎯 Multi-Category Detection**: Comprehensive content classification for drugs, jobs, gambling, tickets, and financial schemes
+- **🔍 OCR Support**: Analyzes text within images to detect hidden advertisements
 - **👥 Community Reports**: Users can report messages with `/report` command for community-based moderation
 - **⚙️ Interactive Settings**: Group-specific configuration via inline keyboard interface
 - **🗄️ Database-Driven**: PostgreSQL storage for persistent settings and message-based reporting
 - **🚫 Direct Actions**: No warning system - immediate delete/mute/ban based on AI confidence
+- **🧠 Smart Context Analysis**: Advanced AI prompts with context-aware detection and false positive prevention
 
 ## 🚀 Quick Start
 
@@ -85,28 +86,32 @@ npm start
 
 ## 📋 Available Commands
 
-- `/start` - Initialize the bot
-- `/help` - Show help message and bot focus areas
-- `/stats` - View moderation statistics
-- `/settings` - Interactive group configuration (admin only)
-- `/report` - Report a message (reply to target message)
+- `/start` - Initialize the bot (works in both private chats and groups)
+- `/help` - Show help message and bot focus areas (auto-deletes after 60 seconds)
+- `/stats` - View moderation statistics and bot permissions (group only, auto-deletes after 45 seconds)
+- `/settings` - Interactive group configuration with inline keyboard (admin only)
+- `/report` - Report a message by replying to it (group only, community-based moderation)
 
 ## ⚙️ How It Works
 
-### 1. **Specialized Content Analysis**
+### 1. **AI-Powered Content Classification**
 
-The bot focuses on detecting:
+The bot uses advanced AI classification to detect and categorize content into:
 
-- **Drug-related content**: Sales, advertisements, suspicious substances
-- **Suspicious job offers**: Courier/delivery jobs that may be drug-related
-- **Ticket fraud**: Warnings about ticket sales (community reports for other content)
+- **Drug-related content**: Sales, advertisements, drug names, slang, controlled substances
+- **Job offers**: ANY job mentions, employment offers, suspicious hiring (very strict detection)
+- **Gambling content**: Casino promotions, betting sites, gambling advertisements
+- **Ticket sales**: Event tickets, concert tickets, sports tickets
+- **Financial schemes**: Loans, credits, fast-money offers, get-rich-quick promises (NOT regular sales)
+- **Default content**: Normal chat, regular marketplace sales, legitimate business ads
 
 ### 2. **OCR Image Analysis**
 
 - Automatically scans single images without text captions
-- Detects drug advertisements hidden in images
-- Uses Russian + English OCR recognition
-- Processes images through the same AI analysis pipeline
+- Detects hidden advertisements in images across all categories
+- Uses Russian + English OCR recognition with Tesseract.js
+- Processes extracted text through the same AI classification pipeline
+- Smart detection prevents false positives (e.g., "фен" as hair dryer vs drug slang)
 
 ### 3. **Action Levels**
 
@@ -116,18 +121,21 @@ The bot focuses on detecting:
 
 ### 4. **Community Reporting System**
 
-- Users reply to problematic messages with `/report`
-- Message-based tracking (not user-based)
-- Configurable threshold per group (default: 10 reports)
-- Automatic ban when threshold reached
+- Users reply to problematic messages with `/report` command
+- Message-based tracking (not user-based) with PostgreSQL storage
+- Configurable threshold per group (default: 10 reports, range: 1-30)
+- Automatic ban when threshold reached with community notification
+- Prevents spam reports with duplicate detection
 
 ### 5. **Database-Driven Settings**
 
-Each group can configure:
+Each group can configure via `/settings` command:
 
-- **Mute Duration**: 5 minutes to 24 hours
-- **Report Threshold**: 1-30 reports needed for ban
-- Settings persist across bot restarts
+- **Mute Duration**: 5 minutes to 24 hours (configurable per group)
+- **Report Threshold**: 1-30 reports needed for ban (default: 10)
+- **Action Thresholds**: AI confidence levels for ban/mute/delete actions
+- Settings persist across bot restarts with PostgreSQL storage
+- Admin-only configuration with inline keyboard interface
 
 ## 🔒 Security & Privacy
 
@@ -165,6 +173,26 @@ Each group can configure:
 - Verify image is a single photo (not media group)
 - Look for OCR-related errors in logs
 
+### User gets banned accidentally:
+
+- Check user ID in database moderation logs
+- Use `/stats` command to view recent moderation actions
+- Check console logs for moderation decisions and AI confidence scores
+- Adjust action thresholds in group settings if needed
+- Review AI classification reasoning in logs
+
+### How to find username by user ID:
+
+```bash
+# Using curl to get user information
+curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getChatMember" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chat_id": "<CHAT_ID>",
+    "user_id": "<USER_ID>"
+  }'
+```
+
 ## 📝 Development
 
 ### Project Structure
@@ -183,35 +211,42 @@ src/
 
 ### Key Files
 
-- `src/services/openai.ts` - AI analysis and custom prompts
-- `src/handlers/settings.ts` - Interactive settings interface
-- `src/services/database.ts` - Database operations
-- `src/helpers/ocr.ts` - Image text extraction
-- `src/config/prompts.ts` - AI prompts and detection logic
+- `src/services/openai.ts` - AI analysis and content classification
+- `src/handlers/settings.ts` - Interactive settings interface with inline keyboards
+- `src/handlers/moderation.ts` - Message processing and action handling
+- `src/services/database.ts` - PostgreSQL operations and moderation tracking
+- `src/helpers/ocr.ts` - Image text extraction with Tesseract.js
+- `src/config/prompts/content-classification.md` - AI prompts for content classification
+- `src/config/stems.ts` - Drug detection stems and false positive prevention
+- `src/helpers/classify-content.ts` - Content classification logic
 
 ### Adding Custom Detection
 
-Modify prompts in `src/config/prompts.ts`:
+Modify prompts in `src/config/prompts/content-classification.md`:
 
-- `MAIN_MODERATION_PROMPT` - General suspicious job offers
-- `DRUG_DETECTION_PROMPT` - Drug-related content
-- `TICKET_DETECTION_PROMPT` - Ticket sales detection
+- Content classification categories: `drugs`, `jobs`, `gambling`, `tickets`, `financial`, `default`
+- Update detection rules and examples
+- Adjust confidence thresholds in configuration
+- Add new stems in `src/config/stems.ts` for keyword-based detection
 
 ## 🎯 Bot Focus Areas
 
-### Primary: Anti-Drug Enforcement
+### Primary: Multi-Category Content Moderation
 
-- Detects drug sales and advertisements
-- Identifies suspicious courier/delivery job offers
-- Analyzes both text and image content
-- Immediate action without warnings
+- **Drug-related content**: Sales, advertisements, drug names, slang
+- **Job offers**: ANY job mentions, employment offers, suspicious hiring (very strict)
+- **Gambling content**: Casino promotions, betting sites
+- **Financial schemes**: Loans, credits, fast-money offers (NOT regular sales)
+- **Ticket sales**: Event tickets, concert tickets
+- Analyzes both text and image content with OCR
+- Immediate action without warnings based on AI confidence
 
 ### Secondary: Community Safety
 
-- Ticket sale fraud warnings
-- Community-driven reporting system
-- Group-specific moderation settings
-- Transparent moderation actions
+- Community-driven reporting system via `/report` command
+- Group-specific moderation settings via `/settings`
+- Transparent moderation actions with auto-deleting notifications
+- Message-based tracking (not user-based) for fair moderation
 
 ## 🤝 Support
 
