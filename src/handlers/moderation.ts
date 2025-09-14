@@ -264,10 +264,11 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
       reason || "Potential ticket sale detected"
     );
 
-    const reply = await ctx.reply(warningMsg, { parse_mode: "HTML" });
+    // For autodelete make this const = reply then use autodelete below
+    await ctx.reply(warningMsg, { parse_mode: "HTML" });
 
-    // Auto-delete the warning message after 60 seconds
-    await autoDeleteMessage(ctx, reply.message_id, 60000);
+    // // Auto-delete the warning message after 60 seconds
+    // await autoDeleteMessage(ctx, reply.message_id, 60000);
 
     // Record the moderation action in database
     await recordModerationAction(

@@ -22,6 +22,7 @@ Classify messages into one of these categories based on primary intent:
 - Drug-related job offers (courier work mentioning drugs)
 - Any mention of controlled substances
 - Keywords: наркотики, трава, меф, амфетамин, кокаин, героин, etc.
+- Also analys full message, beacuse "фен" can be electric device, and "трава для кошек" is not a drugs
 
 **jobs** - Any job offers and recruitment opportunities (VERY STRICT)
 

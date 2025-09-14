@@ -46,7 +46,8 @@ const classifyContent = async (
           content: message,
         },
       ],
-      temperature: 0.1,
+      temperature: 0,
+      top_p: 0.1,
       max_tokens: 2000,
       response_format: { type: "json_object" },
     });

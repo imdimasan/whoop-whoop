@@ -149,11 +149,122 @@ const RX_UNIT = UNIT_STEMS.map((s) => stemToRegex(s, false));
 const RX_DEAL = DEAL_STEMS.map((s) => stemToRegex(s, false));
 
 /**
+ * Pet grass context markers to avoid false positives ("кошачья трава")
+ * @example
+ * // returns true for messages like "трава для кошек пророщенная"
+ */
+const PET_CONTEXT_MARKERS = [
+  "кош", // кошка/кошек/кошачья
+  "кот", // кот/кота/котам
+] as const;
+
+/**
+ * Plant/sprout markers commonly used with pet grass
+ * @example
+ * // helps disambiguate from drug slang
+ */
+const PET_PLANT_MARKERS = [
+  "пророщ", // пророщенная/проростки
+  "овес",
+  "овёс",
+  "ячмен",
+  "пшениц",
+  "семен", // семена/семян
+] as const;
+
+const RX_TRAVA = stemToRegex("трав");
+const RX_FEN = stemToRegex("фен");
+
+/**
+ * Utility: check if any token is included in text
+ * @example
+ * containsAny('трава для кошек', ['кош']) // true
+ */
+const containsAny = (text: string, tokens: readonly string[]): boolean => {
+  for (const token of tokens) {
+    const normToken = normalizeBasic(token);
+
+    if (text.includes(normToken)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/**
  * Main check for "drugs"
  */
 export const hasDrugKeywordsSmart = (message: string): boolean => {
   const norm = normalizeBasic(message);
   const squeezed = squeezeLettersDigits(message);
+
+  console.log("MESSAGE =======>", message);
+
+  // Guard: "кошачья трава" or similar pet-grass products should not be flagged
+  const hasTrava = RX_TRAVA.test(norm) || RX_TRAVA.test(squeezed);
+  if (hasTrava) {
+    const hasPetContext = containsAny(norm, PET_CONTEXT_MARKERS);
+    const hasPlantContext = containsAny(norm, PET_PLANT_MARKERS);
+
+    if (hasPetContext || (hasPetContext && hasPlantContext)) {
+      return false;
+    }
+  }
+
+  // Guard: "фен" as hair dryer should not be flagged
+  const HAIR_DRYER_MARKERS = [
+    "волос",
+    "уклад",
+    "сушка",
+    "насадк",
+    "щетк",
+    "щётк",
+    "диффузор",
+    "мощност",
+    "ватт",
+    "режим",
+    "температур",
+    "иониз",
+    "ion",
+    "турмалин",
+    "керамик",
+    "компакт",
+    "дорожн",
+    "профессионал",
+    // sale/price/condition markers
+    "продам",
+    "продаю",
+    "куплю",
+    "обмен",
+    "меняю",
+    "цена",
+    "бу",
+    "б/у",
+    "₾",
+    "лар",
+    "лари",
+    "gel",
+    "$",
+    "usd",
+    "руб",
+    "₽",
+    // common brands
+    "dyson",
+    "philips",
+    "rowenta",
+    "remington",
+    "braun",
+    "panasonic",
+    "xiaomi",
+  ] as const;
+
+  const hasFen = RX_FEN.test(norm) || RX_FEN.test(squeezed);
+  if (hasFen) {
+    const hairDryerContext = containsAny(norm, HAIR_DRYER_MARKERS);
+    if (hairDryerContext) {
+      return false;
+    }
+  }
 
   // 1) Hard stems - immediately true (catches Koeks, TPABA, m-e-f etc.)
   if (RX_DRUG_STRONG.some((rx) => rx.test(norm) || rx.test(squeezed))) {

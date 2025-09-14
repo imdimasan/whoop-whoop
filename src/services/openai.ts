@@ -29,8 +29,8 @@ export const analyzeMessage = async (
 
     logger.info("Message identified as", { contentType });
 
-    // Skip moderation for default content
-    if (contentType === "default" || contentType === "financial") {
+    // Skip moderation for default content only
+    if (contentType === "default") {
       return {
         shouldModerate: false,
         severity: "low",
