@@ -136,22 +136,6 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
       return;
     }
 
-    // Check for drugs using stems first (fast path)
-    if (hasDrugKeywordsSmart(text.toLowerCase())) {
-      logger.info("Message identified as", { contentType: "drugs" });
-      logger.info("Message analysis result", {
-        action: "ban",
-        reason: "Обнаружен контент, связанный с наркотиками",
-      });
-
-      await takeAction(
-        ctx,
-        "ban",
-        "Обнаружен контент, связанный с наркотиками"
-      );
-      return;
-    }
-
     // Run full AI analysis for other content types
     const moderationResult = await analyzeMessage(text, from.id);
 
