@@ -3,6 +3,7 @@ import { determineContentType } from "../config/rules";
 import logger from "../utils/logger";
 import { config } from "../config/index.js";
 import { CONTENT_CLASSIFICATION_PROMPT } from "../config/prompts/index.js";
+import { TContentType } from "../interfaces/i-content";
 
 // Initialize OpenAI client
 const openai = new OpenAI({
@@ -13,7 +14,7 @@ const openai = new OpenAI({
  * Content classification result interface
  */
 interface IClassificationResult {
-  category: "drugs" | "jobs" | "gambling" | "tickets" | "financial";
+  category: TContentType;
   confidence: number;
   reasoning: string;
 }
@@ -24,7 +25,7 @@ interface IClassificationResult {
  * const classification = await classifyContent('Выгуливать собаку 4500₽/день');
  * console.log(classification.category); // "jobs"
  */
-export const classifyContent = async (
+const classifyContent = async (
   message: string
 ): Promise<IClassificationResult> => {
   try {
@@ -34,13 +35,8 @@ export const classifyContent = async (
     });
 
     const response = await openai.chat.completions.create({
-      model: "chatgpt-4o-latest",
+      model: "gpt-4.1",
       messages: [
-        {
-          role: "system",
-          content:
-            "You are a specialized content-moderation assistant. Always reply in valid JSON. The JSON must include keys like shouldModerate, reason, confidence. Do NOT include any additional text outside the JSON block.",
-        },
         {
           role: "system",
           content: CONTENT_CLASSIFICATION_PROMPT,
@@ -50,7 +46,8 @@ export const classifyContent = async (
           content: message,
         },
       ],
-      temperature: 0.1,
+      temperature: 0,
+      top_p: 0.1,
       max_tokens: 2000,
       response_format: { type: "json_object" },
     });
@@ -60,7 +57,7 @@ export const classifyContent = async (
     if (!content) {
       logger.warn("No classification response from OpenAI");
       return {
-        category: "financial",
+        category: "default",
         confidence: 0.5,
         reasoning: "Не удалось классифицировать сообщение",
       };
@@ -72,7 +69,7 @@ export const classifyContent = async (
     if (!jsonMatch) {
       logger.warn("No JSON found in classification response", { content });
       return {
-        category: "financial",
+        category: "default",
         confidence: 0.5,
         reasoning: "Ошибка парсинга ответа классификации",
       };

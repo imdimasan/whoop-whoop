@@ -8,13 +8,27 @@ import logger from "../utils/logger";
  * const prompt = loadPromptFromFile('main-moderation.md');
  */
 const loadMarkdownFile = (filename: string): string => {
-  const promptPath = join(__dirname, "..", "config", "prompts", filename);
+  // Prefer source prompts during development; fall back to compiled prompts in production
+  const srcPath = join(process.cwd(), "src", "config", "prompts", filename);
+  const distPath = join(__dirname, "..", "config", "prompts", filename);
 
+  // Try reading from src first
   try {
-    return readFileSync(promptPath, "utf-8");
+    const content = readFileSync(srcPath, "utf-8");
+    logger.debug("Loaded prompt file", { filename, from: "src" });
+    return content;
+  } catch {}
+
+  // Fall back to dist
+  try {
+    const content = readFileSync(distPath, "utf-8");
+    logger.debug("Loaded prompt file", { filename, from: "dist" });
+    return content;
   } catch (error) {
     logger.debug("Failed to load prompt file", {
       filename,
+      srcPath,
+      distPath,
       error,
     });
 
