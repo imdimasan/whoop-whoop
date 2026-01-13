@@ -1,3 +1,4 @@
+import { Message } from "grammy/types";
 import { analyzeMessage } from "../services/openai.js";
 import { logger } from "../utils/logger.js";
 import { TModerationAction } from "../interfaces/i-actions.js";
@@ -41,14 +42,16 @@ const autoDeleteMessage = async (
 };
 
 /**
- * Handles incoming messages for moderation
+ * Processes a message (new or edited) for moderation
  * @example
- * await handleMessage(ctx);
+ * await processMessageForModeration(ctx, message, false);
  */
-export const handleMessage = async (ctx: IBotContext): Promise<void> => {
+const processMessageForModeration = async (
+  ctx: IBotContext,
+  message: Message,
+  isEdited: boolean = false
+): Promise<void> => {
   try {
-    // Check if message exists and is from a user
-    const { message } = ctx;
     const { from } = message || {};
 
     if (!message || !from) {
@@ -77,8 +80,11 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
       return;
     }
 
-    // Get message text
-    const text = message?.text || message?.caption || "";
+    // Get message text (handle both Message.text and Message.caption)
+    const text =
+      ("text" in message ? message.text : undefined) ||
+      ("caption" in message ? message.caption : undefined) ||
+      "";
 
     // Skip commands (messages starting with /) from moderation
     if (text.startsWith("/")) {
@@ -89,8 +95,8 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
       return;
     }
 
-    // OCR path: single photo + no text
-    if (!text) {
+    // OCR path: single photo + no text (only for new messages, not edits)
+    if (!text && !isEdited) {
       const ocrText = await processMessageForOCR(ctx);
 
       if (ocrText && ocrText.length >= 3) {
@@ -110,6 +116,7 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
 
           await takeAction(
             ctx,
+            message,
             "ban",
             "Обнаружен контент, связанный с наркотиками (OCR)"
           );
@@ -122,6 +129,7 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
         if (moderationResult.shouldModerate) {
           await takeAction(
             ctx,
+            message,
             moderationResult.suggestedAction,
             moderationResult.reason
           );
@@ -134,6 +142,15 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
     // Skip very short messages (likely not harmful)
     if (text.trim().length < 3) {
       return;
+    }
+
+    // Log if this is an edited message being checked
+    if (isEdited) {
+      logger.info("Checking edited message for moderation", {
+        userId: from.id,
+        messageId: message.message_id,
+        textPreview: text.substring(0, 50),
+      });
     }
 
     // Run full AI analysis for other content types
@@ -155,6 +172,7 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
 
       await takeAction(
         ctx,
+        message,
         moderationResult.suggestedAction,
         moderationResult.reason
       );
@@ -162,22 +180,53 @@ export const handleMessage = async (ctx: IBotContext): Promise<void> => {
   } catch (error) {
     logger.error("Failed to handle message", {
       error,
-      messageId: ctx.message?.message_id,
+      messageId: message?.message_id,
+      isEdited,
     });
   }
 };
 
 /**
+ * Handles incoming new messages for moderation
+ * @example
+ * await handleMessage(ctx);
+ */
+export const handleMessage = async (ctx: IBotContext): Promise<void> => {
+  const { message } = ctx;
+
+  if (!message) {
+    return;
+  }
+
+  await processMessageForModeration(ctx, message, false);
+};
+
+/**
+ * Handles edited messages for moderation
+ * @example
+ * await handleEditedMessage(ctx);
+ */
+export const handleEditedMessage = async (ctx: IBotContext): Promise<void> => {
+  const { editedMessage } = ctx;
+
+  if (!editedMessage) {
+    return;
+  }
+
+  await processMessageForModeration(ctx, editedMessage, true);
+};
+
+/**
  * Takes moderation action based on analysis
  * @example
- * await takeAction(ctx, 'delete', 'Spam detected');
+ * await takeAction(ctx, message, 'delete', 'Spam detected');
  */
 const takeAction = async (
   ctx: IBotContext,
+  message: Message,
   action: TModerationAction,
   reason?: string
 ): Promise<void> => {
-  const { message } = ctx;
   const { from, chat } = message || {};
 
   if (!from || !chat) {
@@ -187,11 +236,11 @@ const takeAction = async (
   try {
     switch (action) {
       case "mute":
-        await muteUser(ctx, reason);
+        await muteUser(ctx, message, reason);
         break;
 
       case "ban":
-        await banUser(ctx, reason);
+        await banUser(ctx, message, reason);
         break;
 
       default:
@@ -205,10 +254,13 @@ const takeAction = async (
 /**
  * Mutes a user temporarily and keeps the message
  * @example
- * await muteUser(ctx, 'Ticket sale detected');
+ * await muteUser(ctx, message, 'Ticket sale detected');
  */
-const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
-  const { message } = ctx;
+const muteUser = async (
+  ctx: IBotContext,
+  message: Message,
+  reason?: string
+): Promise<void> => {
   const { from, chat } = message || {};
 
   if (!from || !chat) {
@@ -254,13 +306,19 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     // // Auto-delete the warning message after 60 seconds
     // await autoDeleteMessage(ctx, reply.message_id, 60000);
 
+    // Get message text for logging
+    const messageText =
+      ("text" in message ? message.text : undefined) ||
+      ("caption" in message ? message.caption : undefined) ||
+      null;
+
     // Record the moderation action in database
     await recordModerationAction(
       chat.id,
       from.id,
       "mute",
       reason || defaultReasons.policyViolation,
-      message?.text || message?.caption || null,
+      messageText,
       muteDurationMinutes
     );
 
@@ -280,10 +338,13 @@ const muteUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
 /**
  * Bans a user from the group and deletes the message
  * @example
- * await banUser(ctx, 'Severe violation');
+ * await banUser(ctx, message, 'Severe violation');
  */
-const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
-  const { message } = ctx;
+const banUser = async (
+  ctx: IBotContext,
+  message: Message,
+  reason?: string
+): Promise<void> => {
   const { from, chat } = message || {};
 
   if (!from || !chat) {
@@ -291,8 +352,8 @@ const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
   }
 
   try {
-    // Delete the message first
-    await ctx.deleteMessage();
+    // Delete the message first (use message_id for both new and edited messages)
+    await ctx.api.deleteMessage(chat.id, message.message_id);
 
     // Ban user
     await ctx.banChatMember(from.id);
@@ -308,13 +369,19 @@ const banUser = async (ctx: IBotContext, reason?: string): Promise<void> => {
     // Auto-delete the ban notification after 30 seconds
     await autoDeleteMessage(ctx, reply.message_id, 30000);
 
+    // Get message text for logging
+    const messageText =
+      ("text" in message ? message.text : undefined) ||
+      ("caption" in message ? message.caption : undefined) ||
+      null;
+
     // Record the moderation action in database
     await recordModerationAction(
       chat.id,
       from.id,
       "ban",
       reason || defaultReasons.severeViolation,
-      message?.text || message?.caption || null,
+      messageText,
       null
     );
 
@@ -458,5 +525,6 @@ export const handleReport = async (
 
 export default {
   handleMessage,
+  handleEditedMessage,
   handleReport,
 };

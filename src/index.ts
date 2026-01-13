@@ -1,7 +1,11 @@
 import { Bot, GrammyError, HttpError } from "grammy";
 import { config } from "./config/index.js";
 import { logger } from "./utils/logger.js";
-import { handleMessage, handleReport } from "./handlers/moderation.js";
+import {
+  handleMessage,
+  handleEditedMessage,
+  handleReport,
+} from "./handlers/moderation.js";
 import { getModerationStats } from "./services/database.js";
 import { IBotContext } from "./interfaces/i-bot.js";
 import { initializeTables } from "./services/database.js";
@@ -47,6 +51,20 @@ const startBot = async (): Promise<void> => {
 
     if (chat.type === "group" || chat.type === "supergroup") {
       await handleMessage(ctx);
+    }
+  });
+
+  // Register edited message handler for moderation
+  bot.on("edited_message", async (ctx) => {
+    // Only process edited messages in groups and supergroups
+    const { chat } = ctx;
+
+    if (!chat) {
+      return;
+    }
+
+    if (chat.type === "group" || chat.type === "supergroup") {
+      await handleEditedMessage(ctx);
     }
   });
 
