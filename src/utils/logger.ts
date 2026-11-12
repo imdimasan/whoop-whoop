@@ -60,12 +60,31 @@ const stringifyMeta = (meta: Record<string, unknown>): string => {
   }
 };
 
+// Secrets that must never reach a log line. grammY keeps the raw fetch error
+// of a failed request, and its message is the request URL with the bot token
+const SECRETS = [config.telegram.botToken, config.openai.apiKey].filter(
+  Boolean
+);
+
 /**
- * Custom log format with readable output
+ * Masks configured secrets in a log line
  * @example
- * logger.info('Analyzing message', { userId: 123, messagePreview: 'Hello', messageLength: 5 });
+ * redactSecrets("request to https://api.telegram.org/bot123:ABC/getMe failed");
  */
-const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
+const redactSecrets = (line: string): string =>
+  SECRETS.reduce((acc, secret) => acc.split(secret).join("<redacted>"), line);
+
+/**
+ * Builds a readable log line from a log entry
+ * @example
+ * formatLine({ level: 'info', message: 'Analyzing message', userId: 123, messagePreview: 'Hello', messageLength: 5 });
+ */
+const formatLine = ({
+  level,
+  message,
+  timestamp,
+  ...metadata
+}: winston.Logform.TransformableInfo): string => {
   let msg = `${timestamp} [${level}]: ${message}`;
 
   // Handle specific log types with clean formatting
@@ -79,7 +98,12 @@ const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
     return msg;
   }
 
-  if (metadata.action && typeof metadata.action === "string") {
+  // An attached error must not be dropped by the compact action format
+  if (
+    metadata.action &&
+    typeof metadata.action === "string" &&
+    !metadata.error
+  ) {
     const coloredAction = formatAction(metadata.action);
     msg += ` -> ${coloredAction}`;
     if (metadata.reason) {
@@ -100,7 +124,14 @@ const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
   }
 
   return msg;
-});
+};
+
+/**
+ * Custom log format with readable output and masked secrets
+ * @example
+ * logger.info('Analyzing message', { userId: 123, messagePreview: 'Hello', messageLength: 5 });
+ */
+const logFormat = printf((info) => redactSecrets(formatLine(info)));
 
 /**
  * Creates and configures Winston logger instance
@@ -118,6 +149,9 @@ export const logger = winston.createLogger({
   transports: [
     new winston.transports.Console({
       format: combine(colorize(), logFormat),
+      // Hosting platforms take the severity from the stream: errors written to
+      // stdout show up as "info" and never match an error filter
+      stderrLevels: ["error"],
     }),
     new winston.transports.File({
       filename: "logs/error.log",
