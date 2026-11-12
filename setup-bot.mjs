@@ -50,7 +50,7 @@ const botConfigs = {
     shortDescription:
       "...that's the sound of da police 🚔. Модерация сообщений и изображений",
     description:
-      "Whoop Whoop - модератор для чатов: проверка сообщений и изображений.\n\n Мои функции:\n• Проверка сообщений пользователей на соблюдение законодательства\n• OCR анализ изображений\n• Система жалоб через команду /report\n• Автоматическое удаление/блокировка нарушителей\n",
+      "Whoop Whoop - модератор для чатов: проверка сообщений и изображений.\n\n Мои функции:\n• Проверка сообщений пользователей на соблюдение законодательства\n• Анализ изображений (OpenAI)\n• Система жалоб через команду /report\n• Автоматическое удаление/блокировка нарушителей\n",
     commands: [
       {
         command: "report",
@@ -64,7 +64,7 @@ const botConfigs = {
     shortDescription:
       "...that's the sound of da police 🚔. Message and image moderation",
     description:
-      "Whoop Whoop - chat moderator: checking messages and images.\n\n My features:\n• Checking user messages for legal compliance\n• OCR image analysis\n• Reporting system via /report command\n• Automatic deletion/blocking of violators\n",
+      "Whoop Whoop - chat moderator: checking messages and images.\n\n My features:\n• Checking user messages for legal compliance\n• Image analysis (OpenAI)\n• Reporting system via /report command\n• Automatic deletion/blocking of violators\n",
     commands: [
       { command: "report", description: "Report a message (reply to message)" },
     ],
@@ -75,7 +75,7 @@ const botConfigs = {
     shortDescription:
       "...that's the sound of da police 🚔. შეტყობინებისა და სურათების მოდერაცია",
     description:
-      "Whoop Whoop - ჩატის მოდერატორი: შეტყობინებისა და სურათების შემოწმება.\n\n ჩემი ფუნქციები:\n• მომხმარებლის შეტყობინებების კანონთან შესაბამისობის შემოწმება\n• OCR სურათების ანალიზი\n• საჩივრების სისტემა /report ბრძანებით\n• დამრღვევების ავტომატური წაშლა/დაბლოკვა\n",
+      "Whoop Whoop - ჩატის მოდერატორი: შეტყობინებისა და სურათების შემოწმება.\n\n ჩემი ფუნქციები:\n• მომხმარებლის შეტყობინებების კანონთან შესაბამისობის შემოწმება\n• სურათების ანალიზი (OpenAI)\n• საჩივრების სისტემა /report ბრძანებით\n• დამრღვევების ავტომატური წაშლა/დაბლოკვა\n",
     commands: [
       {
         command: "report",

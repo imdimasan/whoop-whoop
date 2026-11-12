@@ -1,42 +1,71 @@
 import { logger } from "../utils/logger.js";
+import { config } from "../config/index.js";
 import { IModerationResult } from "../interfaces/i-moderation.js";
-import classifyContent from "../helpers/classify-content.js";
+import classifyContent, {
+  IClassificationInput,
+} from "../helpers/classify-content.js";
 import getActionForContentType from "../helpers/get-action.js";
 import getSeverityForContentType from "../helpers/get-severity.js";
 
+const NO_ACTION: IModerationResult = {
+  shouldModerate: false,
+  severity: "low",
+  suggestedAction: "none",
+  confidence: 0,
+};
+
 /**
- * Analyzes message content for moderation
+ * Analyzes a message (text, or photo with caption) for moderation
  * @example
- * const result = await analyzeMessage('Hello world', 123);
+ * const result = await analyzeMessage({ text: 'Hello world', userId: 123 });
  * if (result.shouldModerate) {
  *   console.log('Message needs moderation:', result.reason);
  * }
  */
 export const analyzeMessage = async (
-  message: string,
-  userId: number
+  input: IClassificationInput
 ): Promise<IModerationResult> => {
+  const isImagePost = Boolean(input.images?.length);
+
   try {
     logger.info("Analyzing message", {
-      userId,
-      messageLength: message.length,
-      messagePreview: message.substring(0, 50),
+      userId: input.userId,
+      messageLength: input.text.length,
+      messagePreview: input.text.substring(0, 50),
     });
 
     // Classify content type using AI
-    const classification = await classifyContent(message);
+    const classification = await classifyContent(input);
+
+    // An image the API rejects (a non-image file sent as image/*, a refusal)
+    // must not spare the caption: judge the text alone, as when the download
+    // or the daily cap skips the image. Not after timeouts: a second call
+    // would double the stall in the one-update-at-a-time loop
+    if (
+      isImagePost &&
+      classification.failed === "rejected" &&
+      input.text.trim().length >= 3
+    ) {
+      logger.info("Image request rejected, checking the caption alone");
+      return analyzeMessage({ ...input, images: [] });
+    }
+
     const contentType = classification.category;
 
     logger.info("Message identified as", { contentType });
 
     // Skip moderation for default content only
     if (contentType === "default") {
-      return {
-        shouldModerate: false,
-        severity: "low",
-        suggestedAction: "none",
-        confidence: 0,
-      };
+      return NO_ACTION;
+    }
+
+    if (isImagePost && classification.confidence < config.images.minConfidence) {
+      logger.info("Image verdict below confidence floor, no action taken", {
+        category: contentType,
+        confidence: classification.confidence,
+        floor: config.images.minConfidence,
+      });
+      return NO_ACTION;
     }
 
     // Determine action based on content type
@@ -44,10 +73,12 @@ export const analyzeMessage = async (
 
     const result = {
       shouldModerate: action !== "none",
-      reason,
+      // The public notice says when the picture decided it: helps admins
+      // review bans of posts whose text looks harmless
+      reason: isImagePost ? `${reason} (по изображению)` : reason,
       severity: getSeverityForContentType(contentType),
       suggestedAction: action,
-      confidence: classification.confidence || 0.8,
+      confidence: classification.confidence,
     };
 
     logger.info("Message analysis result", {
@@ -57,14 +88,9 @@ export const analyzeMessage = async (
 
     return result;
   } catch (error) {
-    logger.error("Failed to analyze message", { error, userId });
+    logger.error("Failed to analyze message", { error, userId: input.userId });
 
-    return {
-      shouldModerate: false,
-      severity: "low",
-      suggestedAction: "none",
-      confidence: 0,
-    };
+    return NO_ACTION;
   }
 };
 

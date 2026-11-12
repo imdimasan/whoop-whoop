@@ -7,6 +7,7 @@ import {
   handleReport,
 } from "./handlers/moderation.js";
 import { getModerationStats } from "./services/database.js";
+import { flushPendingAlbums } from "./helpers/media-group.js";
 import { IBotContext } from "./interfaces/i-bot.js";
 import {
   initializeTablesWithRetry,
@@ -478,6 +479,10 @@ const main = async (): Promise<void> => {
 
     // Resolves only after a shutdown signal stopped the polling loop
     await startBot();
+
+    // Buffered albums were already confirmed to Telegram: check them now or
+    // never (the shutdown timeout still bounds this)
+    await flushPendingAlbums();
 
     await closeDatabase();
     logger.info("Shutdown complete");

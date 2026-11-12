@@ -1,11 +1,11 @@
 # 🤖 Whoop Whoop Telegram Moderation Bot
 
-An AI-powered Telegram moderation bot with comprehensive content classification system, OCR support, and community-driven reporting. Specializes in detecting drugs, suspicious job offers, gambling, ticket fraud, and financial schemes.
+An AI-powered Telegram moderation bot with comprehensive content classification system, image analysis, and community-driven reporting. Specializes in detecting drugs, suspicious job offers, gambling, ticket fraud, financial schemes, and scams.
 
 ## ✨ Features
 
-- **🎯 Multi-Category Detection**: Comprehensive content classification for drugs, jobs, gambling, tickets, and financial schemes
-- **🔍 OCR Support**: Analyzes text within images to detect hidden advertisements
+- **🎯 Multi-Category Detection**: Comprehensive content classification for drugs, jobs, gambling, tickets, financial schemes, and scams
+- **🖼️ Image Analysis**: Photos are checked by an OpenAI vision model, including ads that consist only of pictures
 - **👥 Community Reports**: Users can report messages with `/report` command for community-based moderation
 - **⚙️ Interactive Settings**: Group-specific configuration via inline keyboard interface
 - **🗄️ Database-Driven**: PostgreSQL storage for persistent settings and message-based reporting
@@ -16,9 +16,9 @@ An AI-powered Telegram moderation bot with comprehensive content classification 
 
 ### 1. Prerequisites
 
-- Node.js 24 installed
+- Node.js 24 installed (the OpenAI SDK requires Node 22+)
 - Telegram Bot Token (from @BotFather)
-- OpenAI API Key
+- OpenAI API Key with access to `gpt-6.1-terra` (or another model listed in `src/config/models.ts`)
 - PostgreSQL Database (Railway, Supabase, etc.)
 
 ### 2. Installation
@@ -44,6 +44,12 @@ The setup wizard will ask for:
 - **Database URL**: PostgreSQL connection string
   - Example: `postgresql://username:password@host:port/database`
 - **Action Thresholds**: AI confidence levels for ban/mute/delete actions (0.0-1.0)
+
+Optional environment variables:
+
+- `OPENAI_MODEL`: classification model, one of `gpt-6.1-terra` (default), `gpt-6-sol`, `gpt-6-luna` (see `src/config/models.ts`); any other value stops the bot at startup
+- `IMAGE_ANALYSIS_DAILY_LIMIT`: max images checked per UTC day (default `500`, `0` turns image analysis off)
+- `IMAGE_MIN_CONFIDENCE`: minimum confidence (0-1) for acting on an image-based verdict (default `0.8`)
 
 ### 4. Running the Bot
 
@@ -112,15 +118,16 @@ The bot uses advanced AI classification to detect and categorize content into:
 - **Gambling content**: Casino promotions, betting sites, gambling advertisements
 - **Ticket sales**: Event tickets, concert tickets, sports tickets
 - **Financial schemes**: Loans, credits, fast-money offers, get-rich-quick promises (NOT regular sales)
+- **Scams & dubious services**: Fake documents (driver's licenses, certificates), paid "problem solving" with authorities, data lookups, selling bank cards or accounts, money-recovery fraud (NOT legitimate local services)
 - **Default content**: Normal chat, regular marketplace sales, legitimate business ads
 
-### 2. **OCR Image Analysis**
+### 2. **Image Analysis**
 
-- Automatically scans single images without text captions
-- Detects hidden advertisements in images across all categories
-- Uses Russian + English OCR recognition with Tesseract.js
-- Processes extracted text through the same AI classification pipeline
-- Smart detection prevents false positives (e.g., "фен" as hair dryer vs drug slang)
+- Photos are classified by the same model and rules as text (OpenAI vision), so ads made only of pictures (pills, a cannabis leaf and «Пишите») are caught too
+- The image is checked when the post has no real text (fewer than 10 letters or digits, e.g. only emoji) or when its text contains a link (URL, hidden link, @username, `t.me/…`, URL button); otherwise the text alone is classified
+- Albums are checked as one post, images sent as files are checked too; stickers, GIFs and videos are not
+- An image-based verdict acts only at confidence ≥ `IMAGE_MIN_CONFIDENCE`, and the ban notice says the picture decided it
+- A daily cap (`IMAGE_ANALYSIS_DAILY_LIMIT`) bounds the cost during raids; if the download or the cap prevents an image check, the post is judged by its text
 
 ### 3. **Action Levels**
 
@@ -148,10 +155,10 @@ Each group can configure via `/settings` command:
 
 ## 🔒 Security & Privacy
 
-- Bot processes text messages and single images for moderation
+- Bot processes text messages and photos for moderation
 - Message reports stored in PostgreSQL database
 - Group settings stored with chat ID only
-- OpenAI processes content according to their privacy policy
+- Message texts and photos are sent to OpenAI for classification and processed under its API data policy; the Telegram user id is sent only as a keyed hash (`safety_identifier`)
 - No personal data stored beyond moderation needs
 
 ## 🛠️ Troubleshooting
@@ -170,6 +177,7 @@ Each group can configure via `/settings` command:
 - Look at console logs for error messages
 - Test with `/stats` command
 - If OpenAI is unavailable, text messages are left without moderation (there is no keyword fallback, it banned ordinary sellers); the log reports `AI classification keeps failing` after every 20 such messages
+- Some hacking-service ads are rejected by OpenAI's cyber safeguard (`Classification blocked by OpenAI cyber policy` in the log); such a post stays and needs a `/report`
 
 ### Database issues:
 
@@ -177,11 +185,11 @@ Each group can configure via `/settings` command:
 - Check PostgreSQL server is accessible
 - Look for connection errors in logs
 
-### OCR not working:
+### Photos are not checked:
 
-- Check if tesseract.js files are downloaded
-- Verify image is a single photo (not media group)
-- Look for OCR-related errors in logs
+- A photo with a caption of 10+ letters and no link is judged by its caption only (by design)
+- Look for `Daily image analysis limit reached` or `Image download failed` in the logs
+- `Classification usage` log lines show `imageTokens` when an image reached the model
 
 ### User gets banned accidentally:
 
@@ -211,7 +219,7 @@ curl -X POST "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getChatMember" \
 src/
 ├── config/          # Configuration and prompts
 ├── handlers/        # Message, settings, and moderation handlers
-├── helpers/         # OCR and drug detection utilities
+├── helpers/         # Classification, image and album helpers
 ├── interfaces/      # TypeScript definitions
 ├── services/        # OpenAI and database services
 ├── database/        # PostgreSQL connection
@@ -225,19 +233,21 @@ src/
 - `src/handlers/settings.ts` - Interactive settings interface with inline keyboards
 - `src/handlers/moderation.ts` - Message processing and action handling
 - `src/services/database.ts` - PostgreSQL operations and moderation tracking
-- `src/helpers/ocr.ts` - Image text extraction with Tesseract.js
+- `src/helpers/image-gate.ts` - When a post's image is checked (no real text, or a link)
+- `src/helpers/image-input.ts` - Picking and downloading the image from Telegram
 - `src/config/prompts/content-classification.md` - AI prompts for content classification
-- `src/config/stems.ts` - Drug detection stems and false positive prevention
+- `src/config/models.ts` - OpenAI models the bot may use
+- `src/config/prompts/image-posts.md` - Extra rules for photo posts
 - `src/helpers/classify-content.ts` - Content classification logic
 
 ### Adding Custom Detection
 
 Modify prompts in `src/config/prompts/content-classification.md`:
 
-- Content classification categories: `drugs`, `jobs`, `gambling`, `tickets`, `financial`, `default`
+- Content classification categories: `drugs`, `jobs`, `gambling`, `tickets`, `financial`, `scam`, `default`
 - Update detection rules and examples
 - Adjust confidence thresholds in configuration
-- Add new stems in `src/config/stems.ts` for keyword-based detection
+- Add a new category to `CONTENT_TYPES` in `src/interfaces/i-content.ts` and give it an action in `src/helpers/get-action.ts`
 
 ## 🎯 Bot Focus Areas
 
@@ -247,8 +257,9 @@ Modify prompts in `src/config/prompts/content-classification.md`:
 - **Job offers**: ANY job mentions, employment offers, suspicious hiring (very strict)
 - **Gambling content**: Casino promotions, betting sites
 - **Financial schemes**: Loans, credits, fast-money offers (NOT regular sales)
+- **Scams & dubious services**: Fake documents, paid "problem solving" with authorities, other fraudulent services
 - **Ticket sales**: Event tickets, concert tickets
-- Analyzes both text and image content with OCR
+- Analyzes both text and image content (OpenAI vision)
 - Immediate action without warnings based on AI confidence
 
 ### Secondary: Community Safety

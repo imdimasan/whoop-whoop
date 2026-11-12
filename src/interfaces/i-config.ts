@@ -1,3 +1,5 @@
+import type { TOpenAIModel } from "../config/models";
+
 export interface IConfig {
   telegram: {
     botToken: string;
@@ -5,6 +7,11 @@ export interface IConfig {
   };
   openai: {
     apiKey: string;
+    model: TOpenAIModel;
+  };
+  images: {
+    dailyLimit: number;
+    minConfidence: number;
   };
   moderation: {
     thresholds: {
