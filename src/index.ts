@@ -26,13 +26,46 @@ import {
   errorMessages,
 } from "./config/messages.js";
 
-// Upper bound for a graceful shutdown before the process exits anyway
-const SHUTDOWN_TIMEOUT_MS = 10000;
+// Upper bound for a graceful shutdown before the process exits anyway. The
+// message being handled may wait up to 30 s for the AI classification plus a
+// few Telegram and DB calls; Railway's draining time must be longer than this
+const SHUTDOWN_TIMEOUT_MS = 35000;
 
 // During a deploy the old instance still polls for a moment, and Telegram
 // answers one of the two polls with 409 Conflict: wait it out, do not exit
 const POLLING_CONFLICT_RETRIES = 10;
 const POLLING_CONFLICT_DELAY_MS = 3000;
+
+// Shutdown state shared by the signal handler and the first middleware
+let stopRequested = false;
+let handlingUpdate = false;
+let stopPolling: (() => void) | undefined;
+
+/**
+ * Handles SIGINT/SIGTERM: stops polling right away between updates, or after
+ * the update being handled is done
+ * @example
+ * process.once("SIGTERM", requestShutdown);
+ */
+const requestShutdown = (signal: NodeJS.Signals): void => {
+  if (stopRequested) {
+    return;
+  }
+
+  stopRequested = true;
+  logger.info(`Received ${signal}, shutting down gracefully...`);
+
+  // Never hang on a stuck handler: its update is not confirmed yet, so
+  // Telegram sends it again to the next instance
+  setTimeout(() => {
+    logger.warn("Graceful shutdown timed out, exiting");
+    process.exit(0);
+  }, SHUTDOWN_TIMEOUT_MS).unref();
+
+  if (!handlingUpdate) {
+    stopPolling?.();
+  }
+};
 
 /**
  * Initialize and start the bot. Resolves only after polling was stopped by a
@@ -49,19 +82,37 @@ const startBot = async (): Promise<void> => {
   // Create bot instance
   const bot = new Bot<IBotContext>(config.telegram.botToken);
 
-  // Set once a termination signal arrives
-  let stopping: Promise<void> | undefined;
+  // Resolves once polling has stopped and the offset is confirmed
+  let stopped: Promise<void> | undefined;
 
-  // Must stay the first middleware: bot.stop() confirms only the update being
-  // handled, so the rest of the already fetched batch is skipped here and
-  // Telegram redelivers it after the restart. Handling it now would repeat
-  // every action once more or get cut off by the shutdown timeout
+  // bot.stop() confirms to Telegram every update up to the last one fetched
+  // for handling, so it must only run when no update is half-handled
+  stopPolling = () => {
+    stopped ??= bot.stop().catch((error) => {
+      logger.error("Failed to stop bot cleanly", { error });
+    });
+  };
+
+  // Must stay the first middleware. After a shutdown signal the rest of the
+  // already fetched batch is skipped: it stays unconfirmed and Telegram sends
+  // it again to the next instance. The update being handled when the signal
+  // arrives is finished first and only then confirmed
   bot.use(async (_ctx, next) => {
-    if (stopping) {
+    if (stopRequested) {
       return;
     }
 
-    await next();
+    handlingUpdate = true;
+
+    try {
+      await next();
+    } finally {
+      handlingUpdate = false;
+
+      if (stopRequested) {
+        stopPolling?.();
+      }
+    }
   });
 
   // Register command handlers
@@ -113,26 +164,10 @@ const startBot = async (): Promise<void> => {
     }
   });
 
-  // Graceful shutdown: bot.stop() confirms the handled updates to Telegram, so
-  // nothing is processed twice after the restart
-  const shutdown = (signal: NodeJS.Signals): void => {
-    if (stopping) {
-      return;
-    }
-
-    logger.info(`Received ${signal}, shutting down gracefully...`);
-
-    // The platform kills the container after its grace period anyway, so
-    // never hang on a stuck handler
-    setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS).unref();
-
-    stopping = bot.stop().catch((error) => {
-      logger.error("Failed to stop bot cleanly", { error });
-    });
-  };
-
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
+  // A signal arrived before polling started (e.g. during the database init)
+  if (stopRequested) {
+    return;
+  }
 
   // Start bot
   logger.info("Starting bot...");
@@ -150,7 +185,7 @@ const startBot = async (): Promise<void> => {
       break;
     } catch (error) {
       // Shutting down anyway, the error does not matter any more
-      if (stopping) {
+      if (stopRequested) {
         break;
       }
 
@@ -170,14 +205,14 @@ const startBot = async (): Promise<void> => {
         setTimeout(resolve, POLLING_CONFLICT_DELAY_MS)
       );
 
-      if (stopping) {
+      if (stopRequested) {
         break;
       }
     }
   }
 
   // Polling loop has ended: wait until the update offset is confirmed
-  await stopping;
+  await stopped;
 };
 
 /**
@@ -429,6 +464,11 @@ const registerCommands = (bot: Bot<IBotContext>): void => {
  * Main entry point
  */
 const main = async (): Promise<void> => {
+  // Registered before anything slow: as PID 1 in a container a signal with no
+  // listener is ignored, and the instance would go on to start polling
+  process.once("SIGINT", requestShutdown);
+  process.once("SIGTERM", requestShutdown);
+
   try {
     logger.info("Initializing bot...");
 
