@@ -16,7 +16,7 @@ An AI-powered Telegram moderation bot with comprehensive content classification 
 
 ### 1. Prerequisites
 
-- Node.js 18+ installed
+- Node.js 24 installed
 - Telegram Bot Token (from @BotFather)
 - OpenAI API Key
 - PostgreSQL Database (Railway, Supabase, etc.)
@@ -58,6 +58,13 @@ npm run start:prod
 npm run build
 npm start
 ```
+
+### 5. Deploying on Railway
+
+- Set the bot's `DATABASE_URL` to the reference variable `${{Postgres.DATABASE_URL}}` so it connects over the private network. Do not paste the public `*.proxy.rlwy.net` URL: it stops working as soon as the database's public TCP proxy is removed or changed, and the running bot keeps the stale address.
+- The bot keeps moderating while the database is unreachable (settings, reports and moderation history are disabled until it is back) and logs `Database is unavailable` on every retry, so check the logs after changing database settings.
+- `railpack.json` starts the bot with `node dist/index.js` instead of `npm start`: only then the process receives `SIGTERM` and can shut down gracefully.
+- The Node.js version is pinned by `engines.node` in `package.json`.
 
 ## 🔧 Bot Setup in Telegram
 

@@ -25,6 +25,42 @@ const formatAction = (action: string): string => {
 };
 
 /**
+ * JSON replacer that keeps Error details: message, stack and cause are
+ * non-enumerable, so a plain JSON.stringify logs most errors as "{}"
+ * @example
+ * JSON.stringify({ error: new Error("boom") }, serializeError);
+ */
+const serializeError = (_key: string, value: unknown): unknown => {
+  if (!(value instanceof Error)) {
+    return value;
+  }
+
+  return {
+    name: value.name,
+    message: value.message,
+    // Own enumerable fields carry the useful bits (code/errno/syscall, error_code/description)
+    ...Object.fromEntries(Object.entries(value)),
+    ...(value.cause !== undefined && { cause: value.cause }),
+    // Connection failures to dual-stack hosts are AggregateErrors with an empty message
+    ...(value instanceof AggregateError && { errors: value.errors }),
+    stack: value.stack,
+  };
+};
+
+/**
+ * Stringifies log metadata without ever throwing (e.g. on circular references)
+ * @example
+ * const text = stringifyMeta({ error: new Error("boom"), chatId: 1 });
+ */
+const stringifyMeta = (meta: Record<string, unknown>): string => {
+  try {
+    return JSON.stringify(meta, serializeError);
+  } catch {
+    return "[unserializable metadata]";
+  }
+};
+
+/**
  * Custom log format with readable output
  * @example
  * logger.info('Analyzing message', { userId: 123, messagePreview: 'Hello', messageLength: 5 });
@@ -59,7 +95,7 @@ const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
 
     if (Object.keys(cleanMeta).length > 0) {
-      msg += ` ${JSON.stringify(cleanMeta)}`;
+      msg += ` ${stringifyMeta(cleanMeta)}`;
     }
   }
 

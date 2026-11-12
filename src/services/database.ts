@@ -99,6 +99,57 @@ export const initializeTables = async (): Promise<void> => {
   }
 };
 
+const DB_INIT_RETRY_BASE_MS = 2000;
+const DB_INIT_RETRY_MAX_MS = 60000;
+
+/**
+ * Initialize database tables, retrying in background with exponential backoff
+ * while the database is unreachable. Never throws: moderation itself does not
+ * need the database, so a database outage must not keep the bot from starting.
+ * @example
+ * await initializeTablesWithRetry();
+ */
+export const initializeTablesWithRetry = async (
+  attempt: number = 1
+): Promise<void> => {
+  try {
+    await initializeTables();
+
+    if (attempt > 1) {
+      logger.info("Database connection restored", { attempt });
+    }
+  } catch {
+    // The cause is already logged by initializeTables
+    const delayMs = Math.min(
+      DB_INIT_RETRY_BASE_MS * 2 ** (attempt - 1),
+      DB_INIT_RETRY_MAX_MS
+    );
+
+    logger.error(
+      "Database is unavailable: settings, reports and moderation history are disabled until it is back",
+      { attempt, retryInSeconds: delayMs / 1000 }
+    );
+
+    // unref: a pending retry must not keep the process alive on shutdown
+    setTimeout(() => {
+      void initializeTablesWithRetry(attempt + 1);
+    }, delayMs).unref();
+  }
+};
+
+/**
+ * Close all database connections (call once on shutdown)
+ * @example
+ * await closeDatabase();
+ */
+export const closeDatabase = async (): Promise<void> => {
+  try {
+    await pool.end();
+  } catch (error) {
+    logger.error("Failed to close database pool", { error });
+  }
+};
+
 /**
  * Add a report for a specific message
  * @example

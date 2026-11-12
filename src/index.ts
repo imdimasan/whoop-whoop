@@ -8,7 +8,10 @@ import {
 } from "./handlers/moderation.js";
 import { getModerationStats } from "./services/database.js";
 import { IBotContext } from "./interfaces/i-bot.js";
-import { initializeTables } from "./services/database.js";
+import {
+  initializeTablesWithRetry,
+  closeDatabase,
+} from "./services/database.js";
 import {
   showSettingsMenu,
   handleSettingsCallback,
@@ -23,8 +26,12 @@ import {
   errorMessages,
 } from "./config/messages.js";
 
+// Upper bound for a graceful shutdown before the process exits anyway
+const SHUTDOWN_TIMEOUT_MS = 10000;
+
 /**
- * Initialize and start the bot
+ * Initialize and start the bot. Resolves only after polling was stopped by a
+ * shutdown signal.
  * @example
  * startBot().catch(console.error);
  */
@@ -36,6 +43,21 @@ const startBot = async (): Promise<void> => {
   }
   // Create bot instance
   const bot = new Bot<IBotContext>(config.telegram.botToken);
+
+  // Set once a termination signal arrives
+  let stopping: Promise<void> | undefined;
+
+  // Must stay the first middleware: bot.stop() confirms only the update being
+  // handled, so the rest of the already fetched batch is skipped here and
+  // Telegram redelivers it after the restart. Handling it now would repeat
+  // every action once more or get cut off by the shutdown timeout
+  bot.use(async (_ctx, next) => {
+    if (stopping) {
+      return;
+    }
+
+    await next();
+  });
 
   // Register command handlers
   registerCommands(bot);
@@ -86,6 +108,27 @@ const startBot = async (): Promise<void> => {
     }
   });
 
+  // Graceful shutdown: bot.stop() confirms the handled updates to Telegram, so
+  // nothing is processed twice after the restart
+  const shutdown = (signal: NodeJS.Signals): void => {
+    if (stopping) {
+      return;
+    }
+
+    logger.info(`Received ${signal}, shutting down gracefully...`);
+
+    // The platform kills the container after its grace period anyway, so
+    // never hang on a stuck handler
+    setTimeout(() => process.exit(0), SHUTDOWN_TIMEOUT_MS).unref();
+
+    stopping = bot.stop().catch((error) => {
+      logger.error("Failed to stop bot cleanly", { error });
+    });
+  };
+
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+
   // Start bot
   logger.info("Starting bot...");
 
@@ -97,6 +140,9 @@ const startBot = async (): Promise<void> => {
       });
     },
   });
+
+  // Polling loop has ended: wait until the update offset is confirmed
+  await stopping;
 };
 
 /**
@@ -351,26 +397,21 @@ const main = async (): Promise<void> => {
   try {
     logger.info("Initializing bot...");
 
-    // Initialize database tables
-    await initializeTables();
+    // Initialize database tables. If the database is down this keeps retrying
+    // in background, so moderation still starts without it
+    await initializeTablesWithRetry();
 
+    // Resolves only after a shutdown signal stopped the polling loop
     await startBot();
+
+    await closeDatabase();
+    logger.info("Shutdown complete");
+    process.exit(0);
   } catch (error) {
     logger.error("Failed to start bot", { error });
     process.exit(1);
   }
 };
-
-// Handle graceful shutdown
-process.on("SIGINT", () => {
-  logger.info("Received SIGINT, shutting down gracefully...");
-  process.exit(0);
-});
-
-process.on("SIGTERM", () => {
-  logger.info("Received SIGTERM, shutting down gracefully...");
-  process.exit(0);
-});
 
 // Start the bot
 main().catch((error) => {

@@ -10,6 +10,10 @@ const pool = new Pool({
     process.env.NODE_ENV === "production"
       ? { rejectUnauthorized: false }
       : false,
+  // Updates are handled one by one, so a connection or query that hangs would
+  // stall moderation in every group: fail fast and let callers use fallbacks
+  connectionTimeoutMillis: 5000,
+  query_timeout: 10000,
 });
 
 /**
