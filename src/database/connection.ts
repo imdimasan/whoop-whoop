@@ -14,6 +14,11 @@ const pool = new Pool({
   // stall moderation in every group: fail fast and let callers use fallbacks
   connectionTimeoutMillis: 5000,
   query_timeout: 10000,
+  // query_timeout only stops waiting on the client side; these make the
+  // server cancel the statement too, so a lock held elsewhere (e.g. an open
+  // transaction in psql) cannot pile up abandoned queries on the server
+  statement_timeout: 8000,
+  lock_timeout: 3000,
 });
 
 /**
