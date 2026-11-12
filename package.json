@@ -21,6 +21,9 @@
   "author": "imdbv",
   "license": "ISC",
   "type": "commonjs",
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "@grammyjs/conversations": "^2.1.0",
     "@types/pg": "^8.15.5",

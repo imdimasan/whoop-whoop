@@ -25,11 +25,66 @@ const formatAction = (action: string): string => {
 };
 
 /**
- * Custom log format with readable output
+ * JSON replacer that keeps Error details: message, stack and cause are
+ * non-enumerable, so a plain JSON.stringify logs most errors as "{}"
  * @example
- * logger.info('Analyzing message', { userId: 123, messagePreview: 'Hello', messageLength: 5 });
+ * JSON.stringify({ error: new Error("boom") }, serializeError);
  */
-const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
+const serializeError = (_key: string, value: unknown): unknown => {
+  if (!(value instanceof Error)) {
+    return value;
+  }
+
+  return {
+    name: value.name,
+    message: value.message,
+    // Own enumerable fields carry the useful bits (code/errno/syscall, error_code/description)
+    ...Object.fromEntries(Object.entries(value)),
+    ...(value.cause !== undefined && { cause: value.cause }),
+    // Connection failures to dual-stack hosts are AggregateErrors with an empty message
+    ...(value instanceof AggregateError && { errors: value.errors }),
+    stack: value.stack,
+  };
+};
+
+/**
+ * Stringifies log metadata without ever throwing (e.g. on circular references)
+ * @example
+ * const text = stringifyMeta({ error: new Error("boom"), chatId: 1 });
+ */
+const stringifyMeta = (meta: Record<string, unknown>): string => {
+  try {
+    return JSON.stringify(meta, serializeError);
+  } catch {
+    return "[unserializable metadata]";
+  }
+};
+
+// Secrets that must never reach a log line. grammY keeps the raw fetch error
+// of a failed request, and its message is the request URL with the bot token
+const SECRETS = [config.telegram.botToken, config.openai.apiKey].filter(
+  Boolean
+);
+
+/**
+ * Masks configured secrets in a log line
+ * @example
+ * redactSecrets("request to https://api.telegram.org/bot123:ABC/getMe failed");
+ */
+const redactSecrets = (line: string): string =>
+  SECRETS.reduce((acc, secret) => acc.split(secret).join("<redacted>"), line);
+
+/**
+ * Builds a readable log line from a log entry
+ * @example
+ * formatLine({ level: 'info', message: 'Analyzing message', userId: 123, messagePreview: 'Hello', messageLength: 5 });
+ */
+const formatLine = ({
+  level,
+  message,
+  timestamp,
+  ...metadata
+}: winston.Logform.TransformableInfo): string => {
   let msg = `${timestamp} [${level}]: ${message}`;
 
   // Handle specific log types with clean formatting
@@ -43,7 +98,12 @@ const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
     return msg;
   }
 
-  if (metadata.action && typeof metadata.action === "string") {
+  // An attached error must not be dropped by the compact action format
+  if (
+    metadata.action &&
+    typeof metadata.action === "string" &&
+    !metadata.error
+  ) {
     const coloredAction = formatAction(metadata.action);
     msg += ` -> ${coloredAction}`;
     if (metadata.reason) {
@@ -59,12 +119,19 @@ const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
 
     if (Object.keys(cleanMeta).length > 0) {
-      msg += ` ${JSON.stringify(cleanMeta)}`;
+      msg += ` ${stringifyMeta(cleanMeta)}`;
     }
   }
 
   return msg;
-});
+};
+
+/**
+ * Custom log format with readable output and masked secrets
+ * @example
+ * logger.info('Analyzing message', { userId: 123, messagePreview: 'Hello', messageLength: 5 });
+ */
+const logFormat = printf((info) => redactSecrets(formatLine(info)));
 
 /**
  * Creates and configures Winston logger instance
@@ -82,6 +149,9 @@ export const logger = winston.createLogger({
   transports: [
     new winston.transports.Console({
       format: combine(colorize(), logFormat),
+      // Hosting platforms take the severity from the stream: errors written to
+      // stdout show up as "info" and never match an error filter
+      stderrLevels: ["error"],
     }),
     new winston.transports.File({
       filename: "logs/error.log",
