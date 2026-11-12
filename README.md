@@ -64,6 +64,8 @@ npm start
 - Set the bot's `DATABASE_URL` to the reference variable `${{Postgres.DATABASE_URL}}` so it connects over the private network. Do not paste the public `*.proxy.rlwy.net` URL: it stops working as soon as the database's public TCP proxy is removed or changed, and the running bot keeps the stale address.
 - The bot keeps moderating while the database is unreachable (settings, reports and moderation history are disabled until it is back) and logs `Database is unavailable` on every retry, so check the logs after changing database settings.
 - `railpack.json` starts the bot with `node dist/index.js` instead of `npm start`: only then the process receives `SIGTERM` and can shut down gracefully.
+- Set "Draining seconds" in the service settings (or the `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` variable) to `15`. Railway's default is `0`: the old deployment is killed right after `SIGTERM`, before it can finish the message it is handling.
+- Run exactly one replica, and do not run the bot locally with the production token: Telegram allows one poller per token.
 - The Node.js version is pinned by `engines.node` in `package.json`.
 
 ## 🔧 Bot Setup in Telegram

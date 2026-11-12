@@ -29,6 +29,11 @@ import {
 // Upper bound for a graceful shutdown before the process exits anyway
 const SHUTDOWN_TIMEOUT_MS = 10000;
 
+// During a deploy the old instance still polls for a moment, and Telegram
+// answers one of the two polls with 409 Conflict: wait it out, do not exit
+const POLLING_CONFLICT_RETRIES = 10;
+const POLLING_CONFLICT_DELAY_MS = 3000;
+
 /**
  * Initialize and start the bot. Resolves only after polling was stopped by a
  * shutdown signal.
@@ -132,14 +137,44 @@ const startBot = async (): Promise<void> => {
   // Start bot
   logger.info("Starting bot...");
 
-  await bot.start({
-    onStart: (botInfo) => {
-      logger.info("Bot started successfully", {
-        username: botInfo.username,
-        id: botInfo.id,
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await bot.start({
+        onStart: (botInfo) => {
+          logger.info("Bot started successfully", {
+            username: botInfo.username,
+            id: botInfo.id,
+          });
+        },
       });
-    },
-  });
+      break;
+    } catch (error) {
+      // Shutting down anyway, the error does not matter any more
+      if (stopping) {
+        break;
+      }
+
+      const isConflict =
+        error instanceof GrammyError && error.error_code === 409;
+
+      if (!isConflict || attempt >= POLLING_CONFLICT_RETRIES) {
+        throw error;
+      }
+
+      logger.warn("Another instance of the bot is polling, retrying", {
+        attempt,
+        retryInSeconds: POLLING_CONFLICT_DELAY_MS / 1000,
+      });
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, POLLING_CONFLICT_DELAY_MS)
+      );
+
+      if (stopping) {
+        break;
+      }
+    }
+  }
 
   // Polling loop has ended: wait until the update offset is confirmed
   await stopping;
