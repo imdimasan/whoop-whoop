@@ -30,6 +30,11 @@ const getActionForContentType = (
         action: "ban",
         reason: "Обнаружена финансовая схема (займы, быстрые деньги)",
       };
+    case "scam":
+      return {
+        action: "ban",
+        reason: "Обнаружен скам: сомнительные услуги или поддельные документы",
+      };
     case "tickets":
       return {
         action: "mute",

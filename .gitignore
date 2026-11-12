@@ -34,5 +34,5 @@ debug/
 coverage/
 .nyc_output/ 
 
-# OCR
+# Language data left over from the removed Tesseract OCR
 *.traineddata

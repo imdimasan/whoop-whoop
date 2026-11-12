@@ -13,6 +13,7 @@ const getSeverityForContentType = (
     case "jobs":
     case "gambling":
     case "financial":
+    case "scam":
       return "high";
     case "tickets":
       return "medium";
