@@ -160,6 +160,7 @@ Each group can configure via `/settings` command:
 - Check bot has delete messages permission
 - Look at console logs for error messages
 - Test with `/stats` command
+- If OpenAI is unavailable, text messages are left without moderation (there is no keyword fallback, it banned ordinary sellers); the log reports `AI classification keeps failing` after every 20 such messages
 
 ### Database issues:
 
